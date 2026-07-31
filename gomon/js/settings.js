@@ -1,10 +1,39 @@
 // Settings: trainer identity, OpenAI token (link code / paste / OAuth),
 // lobby server address, and data info.
 import { claimLinkCode, clearToken, fetchOAuthConfig, getStoredToken, setApiKey, startOAuth, } from "./auth.js";
+import { deliverBackup, restoreFromZip } from "./backup.js";
 import { apiBase, setApiBase } from "./config.js";
 import * as db from "./db.js";
 import { lobbyServerUrl } from "./lobbyui.js";
-import { clear, el, toast } from "./ui.js";
+import { busyOverlay, clear, el, overlay, toast } from "./ui.js";
+function pickAndRestore(rerender) {
+    const input = el("input", { type: "file", accept: ".zip,application/zip,application/x-zip-compressed" });
+    input.style.display = "none";
+    document.body.append(input);
+    input.onchange = async () => {
+        const file = input.files?.[0];
+        input.remove();
+        if (!file)
+            return;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const ov = overlay(el("div", { class: "dialog" }, el("h3", {}, "Restore backup"), el("p", { class: "muted small" }, "“Everything” also restores trainer identity, walking progress and your held item " +
+            "(replacing this phone's current state). “Monsters only” just adds the creatures and eggs."), el("div", { class: "dialog-buttons" }, el("button", { class: "btn", onclick: () => { ov.close(); void doRestore(bytes, "monsters-only", rerender); } }, "Monsters only"), el("button", { class: "btn primary", onclick: () => { ov.close(); void doRestore(bytes, "everything", rerender); } }, "Everything"))));
+    };
+    input.click();
+}
+async function doRestore(bytes, mode, rerender) {
+    const busy = busyOverlay("Restoring…");
+    try {
+        const res = await restoreFromZip(bytes, mode);
+        busy.close();
+        toast(`Restored ${res.monsters} monster${res.monsters === 1 ? "" : "s"}${res.eggs ? `, ${res.eggs} egg${res.eggs === 1 ? "" : "s"}` : ""}${res.stateRestored ? " + progress" : ""}.`);
+        rerender();
+    }
+    catch (err) {
+        busy.close();
+        toast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
 export async function renderSettings(root, rerender) {
     clear(root);
     const trainer = await db.getTrainer();
@@ -68,7 +97,17 @@ export async function renderSettings(root, rerender) {
         const inp = el("input", { class: "input", placeholder: "https://example.org", value: apiBase() });
         const btn = el("button", { class: "btn", onclick: () => { setApiBase(inp.value); toast("Sync server saved."); } }, "Save");
         return el("div", { class: "row", style: "flex:1; margin:0" }, inp, btn);
-    })())), el("section", { class: "card" }, el("h3", {}, "About"), el("p", { class: "muted small" }, "GoMon turns your walks into monsters: every 500 m earns a GoBall (catch what you " +
+    })())), el("section", { class: "card" }, el("h3", {}, "Backup & restore"), el("p", { class: "muted small" }, "Package everything — monsters (as their real JPEGs), eggs, trainer, walking progress — " +
+        "into one .zip and send it to iCloud, Dropbox or Files via the share sheet. Restore it " +
+        "on any phone. Backups never contain your OpenAI token."), el("div", { class: "row" }, el("button", { class: "btn primary", onclick: async () => {
+            try {
+                const { monsters, eggs } = await deliverBackup();
+                toast(`Backup ready: ${monsters} monster${monsters === 1 ? "" : "s"}${eggs ? `, ${eggs} egg${eggs === 1 ? "" : "s"}` : ""}.`);
+            }
+            catch (err) {
+                toast(`Backup failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        } }, "⬇ Export backup"), el("button", { class: "btn", onclick: () => pickAndRestore(rerender) }, "⬆ Restore"))), el("section", { class: "card" }, el("h3", {}, "About"), el("p", { class: "muted small" }, "GoMon turns your walks into monsters: every 500 m earns a GoBall (catch what you " +
         "photograph) or a TM (mint a new move from a photo). While you hold an unused item, " +
         "walking still banks partial progress toward the next one — up to a hidden 50-80% cap — " +
         "so glance at your phone every km or so and spend your finds; staring at the screen " +

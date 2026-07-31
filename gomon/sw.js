@@ -1,6 +1,6 @@
 // GoMon service worker: cache-first app shell so the game opens offline
 // (walking, dex browsing and practice battles all work without a network).
-const CACHE = "gomon-v2";
+const CACHE = "gomon-v3";
 const SHELL = [
   "./",
   "index.html",
@@ -12,7 +12,7 @@ const SHELL = [
   "js/openai.js", "js/auth.js", "js/battle.js", "js/lobby.js", "js/lobbylink.js",
   "js/ui.js", "js/game.js", "js/sprites.js", "js/walk.js", "js/capture.js",
   "js/dex.js", "js/lobbyui.js", "js/settings.js", "js/inventory.js", "js/tm.js",
-  "js/config.js",
+  "js/config.js", "js/zip.js", "js/backup.js",
 ];
 
 self.addEventListener("install", (ev) => {

@@ -6,7 +6,7 @@
 // from accepted GPS segments; when GPS is stale/denied/indoors, pedometer
 // steps × stride length are credited instead — never both, so no double count.
 import { kvGet, kvSet } from "./db.js";
-import { creditInv, initialInv, ITEM_METERS, refundHeld, rollItemKind, rollOverflowCap, useHeld, } from "./inventory.js";
+import { creditInv, initialInv, ITEM_METERS, OVERFLOW_MAX, OVERFLOW_MIN, refundHeld, rollItemKind, rollOverflowCap, useHeld, } from "./inventory.js";
 export { ITEM_METERS };
 const MAX_ACCURACY_M = 40; // reject fixes worse than this
 const MAX_SPEED_MPS = 3.5; // ~12.6 km/h: walking/jogging only, no driving credit
@@ -144,6 +144,22 @@ export class Tracker {
     /** Return a consumed item (e.g. generation failed). */
     async refundItem(kind) {
         this.state.inv = refundHeld(this.state.inv, kind);
+        await this.save();
+        this.notify();
+    }
+    /** Replace persisted progress wholesale (backup restore). */
+    async restoreState(raw) {
+        const inv = (typeof raw.inv === "object" && raw.inv !== null ? raw.inv : {});
+        this.state = {
+            odometerM: Math.max(0, Number(raw.odometerM) || 0),
+            stepCount: Math.max(0, Math.round(Number(raw.stepCount) || 0)),
+            inv: {
+                held: inv.held === "ball" || inv.held === "tm" ? inv.held : null,
+                progressM: Math.max(0, Math.min(ITEM_METERS, Number(inv.progressM) || 0)),
+                bankedM: Math.max(0, Math.min(ITEM_METERS * OVERFLOW_MAX, Number(inv.bankedM) || 0)),
+                overflowCapM: Math.max(ITEM_METERS * OVERFLOW_MIN, Math.min(ITEM_METERS * OVERFLOW_MAX, Number(inv.overflowCapM) || ITEM_METERS * OVERFLOW_MAX)),
+            },
+        };
         await this.save();
         this.notify();
     }
