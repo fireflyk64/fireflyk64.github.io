@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#1b2033">
+  <title>GoMon</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header id="topbar">
+    <span class="logo">Go<span class="logo-mon">Mon</span></span>
+  </header>
+
+  <main>
+    <section id="screen-walk" class="screen active"></section>
+    <section id="screen-dex" class="screen"></section>
+    <section id="screen-lobby" class="screen"></section>
+    <section id="screen-settings" class="screen"></section>
+  </main>
+
+  <nav id="tabbar">
+    <button data-tab="walk" class="tab active"><span class="tab-icon">👟</span>Walk</button>
+    <button data-tab="dex" class="tab"><span class="tab-icon">📖</span>Dex</button>
+    <button id="capture-btn" class="tab capture" aria-label="Capture"><span class="capture-plus">＋</span></button>
+    <button data-tab="lobby" class="tab"><span class="tab-icon">⚔️</span>Lobby</button>
+    <button data-tab="settings" class="tab"><span class="tab-icon">⚙️</span>Set</button>
+  </nav>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
