@@ -41,9 +41,58 @@ function fitFont() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ---- ANSI text-blink emulation ----
+// xterm.js parses SGR 5 but never animates it; the console relies on the
+// terminal emulator to blink. We re-render the last full frame on a timer,
+// blanking blink spans on the off phase — torpedo streaks, destruct
+// countdowns and blast asterisks flash just like the native console.
+const hasBlink = (s) => /\x1b\[(?:[0-9;]*;)?5(?:;[0-9;]*)?m/.test(s);
+function blinkOff(s) {
+  let out = "", blink = false;
+  for (let i = 0; i < s.length; ) {
+    if (s[i] === "\x1b" && s[i + 1] === "[") {
+      let j = i + 2;
+      while (j < s.length && !/[a-zA-Z]/.test(s[j])) j++;
+      if (s[j] === "m") {
+        const params = s.slice(i + 2, j).split(";").filter((x) => x !== "");
+        if (params.length === 0 || params.includes("0")) blink = false;
+        if (params.includes("5")) blink = true;
+        if (params.includes("25")) blink = false;
+      }
+      out += s.slice(i, j + 1);
+      i = j + 1;
+    } else if (blink && s[i] >= " ") {
+      out += " ";
+      i++;
+    } else {
+      out += s[i];
+      i++;
+    }
+  }
+  return out;
+}
+let blinkTimer = null;
+let getInputBuf = () => "";
+function showFrame(ansi) {
+  if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; }
+  term.write(ansi);
+  if (hasBlink(ansi)) {
+    const off = blinkOff(ansi);
+    let phase = false;
+    blinkTimer = setInterval(() => {
+      phase = !phase;
+      term.write((phase ? off : ansi) + getInputBuf());
+    }, 400);
+  }
+}
+function stopBlink() {
+  if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; }
+}
+
 // ---- a tiny readline: local echo, backspace, history ----
 function lineReader(onLine) {
   let buf = "";
+  getInputBuf = () => buf;
   const history = [];
   let hist = -1;
   term.onData((data) => {
@@ -113,14 +162,16 @@ async function startLocal(quick) {
   const emit = (items) =>
     (chain = chain.then(async () => {
       for (const it of items) {
-        if (it.k === "frame") term.write(it.ansi);
-        else if (it.k === "text") term.write(it.t + "\r\n");
+        if (it.k === "frame") showFrame(it.ansi);
+        else if (it.k === "text") { stopBlink(); term.write(it.t + "\r\n"); }
         else if (it.k === "prompt") term.write(it.t);
         else if (it.k === "hold") await sleep(it.ms);
-        else if (it.k === "done")
+        else if (it.k === "done") {
+          stopBlink();
           term.write(
             "\r\n\x1b[90mSimulation ended — reload the page to play again.\x1b[0m\r\n"
           );
+        }
       }
     }));
 
@@ -173,11 +224,12 @@ async function startJoin(code, server) {
       }
       chain = chain.then(async () => {
         if (v.t === "frame") {
-          term.write(v.data || "");
+          showFrame(v.data || "");
           if (v.flash) await sleep(140); // hold the flash frame briefly
         } else if (v.t === "info") {
           grey(v.text || "");
         } else if (v.t === "over") {
+          stopBlink();
           term.write(`\r\n\x1b[92m${v.text || ""}\x1b[0m\r\n`);
           over = true;
           game.close();
