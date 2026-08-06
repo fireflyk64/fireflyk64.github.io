@@ -42,15 +42,22 @@
       <input id="code" placeholder="ROOM CODE" maxlength="12" autocapitalize="characters">
       <button id="join">Join room</button>
     </div>
+    <div class="join">
+      <select id="players"><option>2</option><option>3</option><option>4</option></select>
+      <button id="host">Host room &nbsp;<span style="color:#567">(runs the simulation right here)</span></button>
+      <label style="display:flex;align-items:center;gap:4px;color:#9f9">
+        <input type="checkbox" id="hostquick"> quick duel
+      </label>
+    </div>
     <details>
       <summary>advanced</summary>
       <label>lobby server <input id="server" value="https://pqrstuvw.xyz/lobbylink"></label>
     </details>
     <div class="hint">
-      Multiplayer: a console player hosts with <code>begin host</code> and
-      reads you the room code — the simulation runs on their machine and this
-      page is your bridge console. Single player runs the identical Rust
-      engine compiled to WebAssembly, right here.<br><br>
+      Multiplayer: anyone can host — from the console with
+      <code>begin host</code>, or right here with <b>Host room</b> (the
+      simulation runs in this tab as WebAssembly). Everyone else, console or
+      browser, joins with the room code as a bridge console.<br><br>
       Commands: <code>help</code> lists them.  <code>helm 135 6</code>,
       <code>lock all banks on kronos</code>, <code>fire all banks 45</code>,
       <code>load all tubes</code>, <code>fire all tubes</code>,
