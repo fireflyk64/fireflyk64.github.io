@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Geometry Dash (Game Boy)</title>
+<style>
+html,body{margin:0;height:100%;background:#111;color:#ddd;font:14px sans-serif;text-align:center}
+canvas{image-rendering:pixelated;width:min(96vw,calc(88vh*160/144));aspect-ratio:160/144;background:#000;margin-top:2vh;touch-action:none}
+p{margin:.5em}
+</style></head><body>
+<canvas id="screen"></canvas>
+<p id="msg">Loading…</p>
+<p>Enter = Start &nbsp; Space / Z / ↑ = Jump &nbsp; ↑↓ = pick level &nbsp; (tap screen to jump)</p>
+<p><a href="geometrydash.gb" style="color:#8af">Download ROM</a> · <a href="https://github.com/anderrh/geometrydash" style="color:#8af">Source</a></p>
+<script src="wasmboy.js"></script>
+<script>
+const WB = (window.WasmBoy && (WasmBoy.WasmBoy || WasmBoy));
+const keys = {ArrowUp:'UP',ArrowDown:'DOWN',ArrowLeft:'LEFT',ArrowRight:'RIGHT',
+  KeyZ:'A',Space:'A',KeyX:'B',Enter:'START',ShiftRight:'SELECT',ShiftLeft:'SELECT'};
+const st = {UP:false,DOWN:false,LEFT:false,RIGHT:false,A:false,B:false,START:false,SELECT:false};
+function push(){ WB.setJoypadState(st); }
+addEventListener('keydown',e=>{const k=keys[e.code]; if(k){st[k]=true;push();e.preventDefault();}});
+addEventListener('keyup',e=>{const k=keys[e.code]; if(k){st[k]=false;push();e.preventDefault();}});
+const cv=document.getElementById('screen');
+cv.addEventListener('pointerdown',e=>{st.A=true;push();e.preventDefault();});
+addEventListener('pointerup',()=>{st.A=false;push();});
+(async()=>{
+  try{
+    await WB.config({isGbcEnabled:false,isAudioEnabled:true,enableAudioDebugging:false,frameSkip:0,
+      gameboyFrameRate:60,headless:false,isGbcColorizationEnabled:false,updateGraphicsCallback:false});
+    await WB.setCanvas(cv);
+    await WB.loadROM('geometrydash.gb');
+    await WB.play();
+    document.getElementById('msg').textContent='Press Enter to start';
+  }catch(err){document.getElementById('msg').textContent='Failed to start: '+err;console.error(err);}
+})();
+</script></body></html>
