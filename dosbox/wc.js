@@ -32,8 +32,46 @@ function log(line) {
   logEl.textContent += line + "\n";
   if (logEl.textContent.length > 200000) logEl.textContent = logEl.textContent.slice(-100000);
   if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+  noticeGameEnd(String(line));
 }
 function status(text) { $("status").textContent = text; }
+
+// A game that stops by itself leaves a DOS prompt, or a picture that stands
+// still, and a player with nothing to report but "it crashed".  The hooks
+// log the game's end with the text it left on the screen and its stack
+// (src/cpu/wcnet_game.cpp, game_program_ended), and a trap in the emulator
+// itself comes as a page error: both are said in the status line, and
+// "Copy log" takes the whole log to the clipboard for a report.
+let endNotice = null;
+let emulatorStarted = false;   // (declared here: an error can come before the rest of this file has run)
+function noticeGameEnd(line) {
+  if (/^Exit to error: /.test(line)) {
+    // (DOSBox itself gave up: an instruction or a device it does not emulate.)
+    setTimeout(() => status(`The emulator stopped: ${line.slice(15, 175)}. Reload the page to fly again; "Copy log" under the picture has the details for a report.`), 0);
+  } else if (/^wcnet: .+ ended$/.test(line)) {
+    endNotice = { lines: [] };
+    setTimeout(() => {
+      const said = endNotice.lines.join(" / ");
+      endNotice = null;
+      status(`The game stopped by itself${said ? `: "${said.slice(0, 160)}"` : ""}. Reload the page to fly again; "Copy log" under the picture has the details for a report.`);
+    }, 300);
+  } else if (endNotice && /^wcnet:\s+screen: /.test(line) && !/^[A-Z]:\\/.test(line.replace(/^wcnet:\s+screen: /, ""))) {
+    endNotice.lines.push(line.replace(/^wcnet:\s+screen: /, "").trim());
+  }
+}
+function emulatorFailed(what) {
+  if (!emulatorStarted) return;
+  log(`the emulator stopped: ${what}`);
+  status(`The emulator stopped (${String(what).split("\n")[0].slice(0, 120)}). Reload the page to fly again; "Copy log" under the picture has the details for a report.`);
+}
+window.addEventListener("error", (e) => emulatorFailed((e.error && e.error.stack) || e.message));
+window.addEventListener("unhandledrejection", (e) => emulatorFailed((e.reason && (e.reason.stack || e.reason.message)) || String(e.reason)));
+$("copyLog").addEventListener("click", async () => {
+  const text = `${navigator.userAgent}\n${location.href.replace(/([?&]callsign=)[^&]*/, "$1…")}\n\n${logEl.textContent}`;
+  try { await navigator.clipboard.writeText(text); $("copyLog").textContent = "Copied"; }
+  catch (e) { const r = document.createRange(); r.selectNodeContents(logEl); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); $("copyLog").textContent = "Selected: press Ctrl+C"; }
+  setTimeout(() => { $("copyLog").textContent = "Copy log"; }, 2500);
+});
 function sourceStatus(text) { $("sourceStatus").textContent = text; }
 const mb = (n) => (n / 1048576).toFixed(1) + " MB";
 
@@ -673,6 +711,7 @@ window.addEventListener("keyup", capsLockAsEscape, true);
 async function start(fromGesture) {
   if (running) return;
   running = true;
+  emulatorStarted = true;
   $("fly").disabled = true;
   for (const el of ["gamefile", "exePicker", "callsign", "firstname", "lastname", "verbose", "leave"]) $(el).disabled = true;
   sourceButtons(false);
@@ -689,7 +728,8 @@ async function start(fromGesture) {
     };
     status("Loading the emulator…");
     const { default: createDOSBox } = await import("./dosbox.js");
-    const env = { WCNET_LOG: cfg.verbose ? "2" : "1", SDL_EMSCRIPTEN_KEYBOARD_ELEMENT: "#canvas" };
+    // (WCNET_EXIT_STACK: should the game end by itself, its stack goes into the log.)
+    const env = { WCNET_LOG: cfg.verbose ? "2" : "1", WCNET_EXIT_STACK: "1", SDL_EMSCRIPTEN_KEYBOARD_ELEMENT: "#canvas" };
     if (source.game.multiplayer) {
       env.WCROOM = cfg.code; env.WCLOBBY = cfg.server; env.WCPLAYERS = cfg.players;
       if (cfg.relay) env.WCLOBBY_RELAY = "1";
@@ -731,6 +771,7 @@ async function start(fromGesture) {
       print: log,
       printErr: log,
       locateFile: (path) => path,
+      onAbort: (what) => emulatorFailed(`abort: ${what}`),
       preRun: [() => { Object.assign(config.ENV, env); }],
     };
     const Module = await createDOSBox(config);
@@ -805,9 +846,27 @@ function showPerformance() {
 // A game controller chosen in this window drives the running game's mouse and
 // keyboard (web/gamepad.js); the registry says where the game's steering
 // pointer rests and how far it reaches.
+// Where a controller's stick rests the game's pointer and how far it moves
+// it: the registry's figures (Wing Commander: a fixed point of the screen),
+// or the running game's own (`fromGame`, Wing Commander II: the middle of
+// the cockpit's window, another in every ship and every turret, and the
+// distances at which its steps of turn begin; src/cpu/wcnet_hooks.cpp,
+// steer_info).  The game's are in units of the mouse's range, 640 x 200.
+function steeringPointer() {
+  const p = (gameInfo() && gameInfo().pointer) || null;
+  if (!p || !p.fromGame) return p;
+  const M = running && window.DOSBox;
+  if (!M || !M._wc_web_steer) return null;
+  const [left, top, right, bottom] = [0, 1, 2, 3].map((i) => M._wc_web_steer(0, i));
+  if (!(right > left && bottom > top && left >= 0 && top >= 0)) return null;
+  const steps = (what, range) => { const s = []; for (let i = 0, v; (v = M._wc_web_steer(what, i)) >= 0; i++) s.push(v / range); return s; };
+  return { x: (left + right) / 2 / 639, y: (top + bottom) / 2 / 199, rx: (right - left) / 2 / 639, ry: (bottom - top) / 2 / 199,
+           stepsX: steps(1, 639), stepsY: steps(2, 199), edgeX: M._wc_web_steer(3, 0) / 639, edgeY: M._wc_web_steer(3, 1) / 199, top: M._wc_web_steer(3, 2) };
+}
+
 initControls({
   module: () => (running && window.DOSBox) || null,
-  pointer: () => (gameInfo() && gameInfo().pointer) || null,
+  pointer: steeringPointer,
   log,
 });
 
