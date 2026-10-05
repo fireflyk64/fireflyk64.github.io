@@ -38,7 +38,7 @@ function sourceStatus(text) { $("sourceStatus").textContent = text; }
 const mb = (n) => (n / 1048576).toFixed(1) + " MB";
 
 // Prefill from the URL (?room=CODE&callsign=...) so a link can be shared.
-for (const k of ["room", "callsign", "lastname", "players"]) if (query.get(k)) $(k).value = query.get(k);
+for (const k of ["room", "callsign", "firstname", "lastname", "players"]) if (query.get(k)) $(k).value = query.get(k);
 if (query.get("relay")) $("relay").checked = true;
 if (query.get("verbose")) $("verbose").checked = true;
 if (!$("room").value) $("room").value = "WC-" + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -60,6 +60,8 @@ function setSource(s) {
                  (s.game.multiplayer ? "" : " The multiplayer hooks only exist for Wing Commander 1 and 2, so this runs single-player."));
   }
   describeSaves();
+  // (Wing Commander II's people use a first name; the first game has none.)
+  $("firstnameLabel").hidden = !(gameInfo() && gameInfo().firstName);
   if (lobby.game) { sayHello(); buildMissionMenu(); renderMission(); }
   updateActions();
 }
@@ -567,7 +569,7 @@ async function joinRoom() {
     lobby.unsubscribe = game.onEvent(onLobbyEvent);
     const url = new URL(location.href);
     url.searchParams.set("room", code);
-    url.searchParams.delete("callsign"); url.searchParams.delete("lastname");
+    url.searchParams.delete("callsign"); url.searchParams.delete("firstname"); url.searchParams.delete("lastname");
     history.replaceState(null, "", url);
     $("lobby").hidden = false;
     $("leave").hidden = false;
@@ -672,13 +674,14 @@ async function start(fromGesture) {
   if (running) return;
   running = true;
   $("fly").disabled = true;
-  for (const el of ["gamefile", "exePicker", "callsign", "lastname", "verbose", "leave"]) $(el).disabled = true;
+  for (const el of ["gamefile", "exePicker", "callsign", "firstname", "lastname", "verbose", "leave"]) $(el).disabled = true;
   sourceButtons(false);
   try {
     const cfg = {
       code: lobby.game.code,
       callsign: $("callsign").value.trim(),
       lastname: $("lastname").value.trim(),
+      firstname: gameInfo() && gameInfo().firstName ? $("firstname").value.trim() : "",
       players: String(lobby.game.maxPlayers),
       server: $("server").value.trim() || DEFAULT_SERVER,
       relay: $("relay").checked,
@@ -697,6 +700,7 @@ async function start(fromGesture) {
     if (source.game.multiplayer) env.WCROCKS = String(ROCKS[lobby.rocks]);
     if (cfg.callsign) env.WCCALLSIGN = cfg.callsign;
     if (cfg.lastname) env.WCLASTNAME = cfg.lastname;
+    if (cfg.firstname) env.WCFIRSTNAME = cfg.firstname;
     // The picked mission: in the hooks' environment, or on the game's own
     // command line (the registry says which).
     const campaign = gameInfo() && gameInfo().campaign;
@@ -748,8 +752,14 @@ async function start(fromGesture) {
     const cycles = Number(query.get("cycles")) || (gameInfo() && gameInfo().cycles) || 0;
     const args = ["-c", `mount c ${GAME_ROOT}`, "-c", "c:"];
     if (cycles > 0) args.push("-c", `cycles=${Math.round(cycles)}`);
+    // What the game's own setup expects of the machine (the registry), as a
+    // configuration file: DOSBox's `config -set` rewrites the list of
+    // startup commands it is itself run from, and the game's is lost.
+    const conf = gameInfo() && gameInfo().dosbox;
+    if (conf) { Module.FS.writeFile("/game.conf", conf); args.unshift("-conf", "/game.conf"); }
     Module.callMain([...args, "-c", cmd]);
     setInterval(keepSaves, 4000);
+    setInterval(showPerformance, 1000);
     for (const ev of ["pagehide", "visibilitychange"]) window.addEventListener(ev, keepSaves);
     $("fullscreen").hidden = false;
     if (fromGesture) goFullscreen();
@@ -761,6 +771,33 @@ async function start(fromGesture) {
     log("failed: " + (e && e.stack ? e.stack : e));
     status("Failed to start: " + (e && e.message ? e.message : e));
   }
+}
+
+// -- how it is running -----------------------------------------------------------
+
+// The game's own figures from the flight loop (src/cpu/wcnet_perf.h): frames
+// per second, how much of each frame's time the game needed, whether the
+// emulator keeps up with the clock, and how long a frame waits for the other
+// players.  They answer "why is it slow": a load near 100% means the game
+// needs more cycles in flight (?env.WCFLIGHTCYCLES=N), an emulator below 100%
+// means this computer cannot deliver the cycles asked for (use fewer), and a
+// long wait means the other player's computer or the connection is the brake.
+function showPerformance() {
+  const M = window.DOSBox;
+  const el = $("perf");
+  if (!M || !M._wc_web_perf || !M._wc_web_in_flight || !M._wc_web_in_flight() || M._wc_web_perf(0) < 0) { el.textContent = ""; return; }
+  const fps = M._wc_web_perf(0), speed = M._wc_web_perf(1), wait = M._wc_web_perf(2), cycles = M._wc_web_perf(3), load = M._wc_web_perf(5);
+  // (No load figure for a game that paces itself, as Wing Commander II does.)
+  // The host sets the pace and a wingman's game waits for the host's frames
+  // as a matter of course; it is the host's wait that says somebody is slow.
+  const alone = !lobby.game || lobby.game.players.filter((p) => p.occupied).length < 2;
+  const parts = [`${fps.toFixed(1)} frames/s`, load < 0 ? `${cycles} cycles` : `game busy ${Math.round(100 * load)}% of the time at ${cycles} cycles`,
+                 `emulator at ${Math.round(100 * speed)}% of real time`];
+  if (!alone) parts.push(isHost() ? `${wait.toFixed(0)} ms/frame waiting for the other players` : "following the host's pace");
+  const warn = speed < 0.93 ? "This computer cannot keep up with the emulated CPU: fewer cycles would run smoother (Ctrl+F11)."
+             : load > 0.95 ? "The game needs more CPU than it is given: try ?env.WCFLIGHTCYCLES=20000 in the address."
+             : (!alone && isHost() && wait > 10) ? "Another player's computer or connection is holding the game back." : "";
+  el.innerHTML = esc(parts.join(" · ")) + (warn ? ` <span class="warn">${esc(warn)}</span>` : "");
 }
 
 // -- controllers ---------------------------------------------------------------

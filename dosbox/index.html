@@ -67,6 +67,8 @@
   #saveButtons .pick { color: #7aa2ff; cursor: pointer; text-decoration: underline; }
   #saveButtons input[type=file] { display: none; }
   #saveStatus { color: #9aa3b2; }
+  #perf { color: #9aa3b2; font: 12px/1.5 ui-monospace, monospace; min-height: 18px; margin-top: 6px; }
+  #perf .warn { color: #ffb454; }
   #log { flex: 1 1 320px; min-height: 200px; max-height: 400px; overflow: auto; background: #05070a; border: 1px solid #1d2230; padding: 8px; font: 12px/1.35 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
 </style>
 </head>
@@ -96,6 +98,7 @@
     <form id="setup">
       <label>Room code <input type="text" id="room" placeholder="FALCON-7" pattern="[A-Za-z0-9_\-]{4,64}" required></label>
       <label>Callsign <input type="text" id="callsign" placeholder="Maverick"></label>
+      <label id="firstnameLabel" hidden>First name <input type="text" id="firstname" placeholder="Christopher" maxlength="12"></label>
       <label>Last name <input type="text" id="lastname" placeholder="Blair"></label>
       <label>Players in room <input type="number" id="players" min="2" max="3" value="2"></label>
       <label>Controller <select id="padSelect"><option value="none">Keyboard and mouse</option></select></label>
@@ -146,6 +149,7 @@
       <canvas id="canvas" width="640" height="400" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
       <div id="log"></div>
     </div>
+    <div id="perf" title="Measured in flight, every two seconds"></div>
     <p class="hint">Click the screen to give it the keyboard. <kbd>Caps Lock</kbd> is the game's <kbd>Esc</kbd> (it skips cutscenes), because the browser keeps <kbd>Esc</kbd> for leaving full screen; in Chrome and Edge a short tap of <kbd>Esc</kbd> also reaches the game in full screen, and holding it leaves. Press <kbd>0</kbd> to type a chat message to the other pilots, <kbd>Enter</kbd> sends it; in space <kbd>Enter</kbd> fires missiles. <kbd>Ctrl</kbd>+<kbd>F10</kbd> releases the mouse.</p>
   </section>
 
