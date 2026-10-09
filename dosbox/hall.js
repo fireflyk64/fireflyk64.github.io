@@ -32,10 +32,6 @@
 //     all are taken, and every page says something to the server once a
 //     minute so that its own is not.  (The server counts any message as a
 //     sign of life; it has no ping, so it answers "unknown message type".)
-//     Once a minute is as often as it has to be, and it is all that a
-//     pilot who only sits in the lobby sends the server: a hidden tab's
-//     timers run once a minute, so two signs of life are two minutes
-//     apart at worst.
 //   * The room ends when the server says so (a day after it was made, or
 //     five minutes after the last pilot left): the next page makes it again.
 //   * There is a row of lobbies: WC-LOBBY, then WC-LOBBY0, WC-LOBBY1, ...
@@ -58,7 +54,7 @@ const OFFER_SPREAD_MS = 25;       // per pilot in the lobby: over how long the o
 const OFFER_SPREAD_MAX_MS = 6000;
 const ROSTER_NAMES = 24;          // callsigns shown; the rest are counted
 const CLAIM_AFTER_MS = 150000;
-const HEARTBEAT_MS = 60000;       // a sign of life to the server: at worst two minutes apart in a hidden tab, which is under CLAIM_AFTER_MS, and under the five minutes after which the public server's proxy hangs up on a silent socket
+const HEARTBEAT_MS = 25000;
 const CONNECT_TIMEOUT_MS = 20000;
 const DIRECT_WAIT_MS = 12000;     // how long a direct connection gets before the relay is tried
 const RELAY_WAIT_MS = 30000;
