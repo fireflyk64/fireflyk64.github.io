@@ -17,20 +17,33 @@
 // included), noise suppression, automatic gain, and Opus.  Push to talk is
 // the backquote key, or a controller button (web/gamepad.js).
 const VOICE_KEY = "wc:voice";
+const INPUT_KEY = "wc:voiceInput";
 const CHOICES = ["off", "listen", "ptt", "on"];
 const PTT_CODE = "Backquote";
 
 export function initVoice(host) {
   const $ = (id) => document.getElementById(id);
   const sel = $("voice"), state = $("voiceState");
-  let choice = "off";
+  const input = $("voiceInput");
+  const resume = $("voiceResume");
+  const details = $("voiceDetails"), diagnostics = $("voiceDiagnostics"), inputState = $("voiceInputState");
+  const events = [];
+  let micError = "";
+  function log(message) {
+    events.push({ time: new Date().toISOString(), message });
+    if (events.length > 80) events.shift();
+    host.log(message);
+  }
+  let choice = "off", inputId = "";
   try { const saved = localStorage.getItem(VOICE_KEY); if (CHOICES.includes(saved)) choice = saved; } catch (e) { /* off */ }
+  try { inputId = localStorage.getItem(INPUT_KEY) || ""; } catch (e) { /* system default */ }
   sel.value = choice;
   const remote = new Map();   // player id -> that player's choice
   const links = new Map();    // player id -> { pc, audio, offerer, pending }
   let mic = null;             // the microphone, while the choice is a talking one
   let micWanted = null;       // the acquisition in progress
   let pttDown = false;
+  let micGeneration = 0, roomGeneration = 0;
 
   const optedIn = (c) => c === "listen" || c === "ptt" || c === "on";
   const talks = (c) => c === "ptt" || c === "on";
@@ -43,21 +56,56 @@ export function initVoice(host) {
 
   function save() { try { localStorage.setItem(VOICE_KEY, choice); } catch (e) { /* not kept */ } }
 
+  let deviceRefresh = 0;
+  async function refreshInputs() {
+    if (!input || !navigator.mediaDevices?.enumerateDevices) return;
+    const refresh = ++deviceRefresh;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      if (refresh !== deviceRefresh) return;
+      const microphones = devices.filter((d) => d.kind === "audioinput" && d.deviceId && d.deviceId !== "default");
+      input.replaceChildren(new Option("System default", ""));
+      microphones.forEach((d, i) => input.add(new Option(d.label || `Microphone ${i + 1}`, d.deviceId)));
+      // Do not silently switch to a different microphone if a saved device was
+      // unplugged. Keep it visible so the pilot can choose a replacement.
+      if (inputId && !microphones.some((d) => d.deviceId === inputId)) {
+        input.add(new Option("Saved microphone (unavailable or permission needed)", inputId));
+      }
+      input.value = inputId;
+    } catch (e) { log(`voice: cannot list microphones: ${e.name}`); }
+  }
+
   async function acquireMic() {
-    if (mic || micWanted) return micWanted;
-    micWanted = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-      .then((stream) => { mic = stream; applyMute(); return stream; })
+    if (mic) { applyMute(); return mic; }
+    if (micWanted) return micWanted;
+    const generation = ++micGeneration;
+    micError = "";
+    micWanted = Promise.resolve().then(() => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      ...(inputId ? { deviceId: { exact: inputId } } : {}) } }))
+      .then((stream) => {
+        if (generation !== micGeneration || !talks(choice)) {
+          for (const t of stream.getTracks()) t.stop();
+          return null;
+        }
+        mic = stream; applyMute(); render(); void refreshInputs(); return stream;
+      })
       .catch((e) => {
-        host.chatLine(`No microphone (${e.name}): voice is listen only for you`, "sys");
-        choice = "listen"; sel.value = choice; save(); host.announce();
+        if (generation !== micGeneration) return null;
+        micError = e.name === "OverconstrainedError" || e.name === "NotFoundError"
+          ? "Selected microphone is unavailable. Choose another microphone, then turn voice on."
+          : `No microphone (${e.name}). Check Chrome and macOS microphone permissions and your input device.`;
+        host.chatLine(micError + " Voice is listen only for you.", "sys");
+        choice = "listen"; sel.value = choice; save(); closeAll(); host.announce();
         return null;
       })
-      .finally(() => { micWanted = null; });
+      .finally(() => { if (generation === micGeneration) { micWanted = null; render(); } });
     return micWanted;
   }
   function releaseMic() {
+    ++micGeneration; micWanted = null;
     if (mic) for (const t of mic.getTracks()) t.stop();
     mic = null;
+    if (inputState) { inputState.hidden = true; inputState.textContent = ""; }
   }
   function applyMute() {
     if (mic) for (const t of mic.getAudioTracks()) t.enabled = choice === "on" || (choice === "ptt" && pttDown);
@@ -72,10 +120,26 @@ export function initVoice(host) {
   }
   function closeAll() { for (const id of Array.from(links.keys())) close(id); }
 
+  function play(id, link) {
+    if (!link.audio || link.playing) return;
+    link.playing = true;
+    // Invoke play inside the button's event handler to preserve user activation.
+    link.audio.play().then(() => {
+      if (links.get(id) !== link) return;
+      link.playbackError = ""; render();
+    }).catch((err) => {
+      if (links.get(id) !== link) return;
+      link.playbackError = `${err.name}: ${err.message}`;
+      log(`voice: playing player ${id}: ${link.playbackError}`);
+      render();
+    }).finally(() => { link.playing = false; });
+  }
+  resume?.addEventListener("click", () => { for (const [id, link] of links) play(id, link); });
+
   function open(id, offerer) {
     const g = host.game();
     const pc = new RTCPeerConnection({ iceServers: g.iceServers });
-    const link = { pc, audio: null, offerer, pending: [] };
+    const link = { pc, audio: null, offerer, pending: [], playbackError: "" };
     links.set(id, link);
     if (mic && talks(choice)) for (const t of mic.getAudioTracks()) pc.addTrack(t, mic);
     else pc.addTransceiver("audio", { direction: "recvonly" });
@@ -84,11 +148,12 @@ export function initVoice(host) {
       const a = link.audio || (link.audio = new Audio());
       a.srcObject = e.streams[0] || new MediaStream([e.track]);
       a.autoplay = true;
-      a.play().catch((err) => host.log(`voice: playing player ${id}: ${err.message}`));
+      a.onplaying = () => { if (links.get(id) === link) { link.playbackError = ""; render(); } };
+      play(id, link);
       render();
     };
     pc.onconnectionstatechange = () => {
-      host.log(`voice: player ${id} ${pc.connectionState}`);
+      log(`voice: player ${id} ${pc.connectionState}`);
       if (pc.connectionState === "failed") { close(id); setTimeout(update, 3000); }
       render();
     };
@@ -101,7 +166,7 @@ export function initVoice(host) {
       if (links.get(id) !== link) return;
       await link.pc.setLocalDescription(sdp);
       host.signal(id, { voice: "offer", sdp: link.pc.localDescription.sdp });
-    } catch (e) { host.log(`voice: offer to player ${id} failed: ${e.message}`); }
+    } catch (e) { log(`voice: offer to player ${id} failed: ${e.name}`); }
   }
   async function flush(link) {
     const queued = link.pending.splice(0);
@@ -111,11 +176,13 @@ export function initVoice(host) {
   // Voice signaling from another player (a lobby message over the data channel).
   async function signal(from, data) {
     if (!data || typeof data !== "object" || typeof data.voice !== "string") return;
+    const generation = roomGeneration;
     try {
       if (data.voice === "offer") {
         if (!everyoneIn()) return;  // (not for us: our choice, or somebody's, is off)
         close(from);
         if (micWanted) await micWanted;
+        if (generation !== roomGeneration || !everyoneIn()) return;
         const link = open(from, false);
         await link.pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
         await flush(link);
@@ -134,15 +201,16 @@ export function initVoice(host) {
         if (link.pc.remoteDescription) { try { await link.pc.addIceCandidate(data.candidate || undefined); } catch (e) { /* stale */ } }
         else link.pending.push(data.candidate);
       }
-    } catch (e) { host.log(`voice: signal (${data.voice}) from player ${from} failed: ${e.message}`); }
+    } catch (e) { log(`voice: signal (${data.voice}) from player ${from} failed: ${e.name}`); }
   }
 
   // Voice is on with everybody, or with nobody: the lower id offers.
   async function update() {
-    const g = host.game();
+    const g = host.game(), generation = roomGeneration;
     if (!g || !everyoneIn()) { closeAll(); render(); return; }
     if (talks(choice) && !mic) await acquireMic();
-    if (!everyoneIn()) { closeAll(); render(); return; }  // (the choice may have changed meanwhile)
+    if (generation !== roomGeneration || g !== host.game()) return;
+    if (!everyoneIn()) { closeAll(); render(); return; }  // the choice may have changed meanwhile
     for (const id of others()) {
       if (!links.has(id) && g.selfId < id) void offer(id);
     }
@@ -159,9 +227,15 @@ export function initVoice(host) {
     else if (waiting.length) text = `no voice until ${waiting.map(name).join(", ")} opts in`;
     else {
       const up = them.filter((id) => links.get(id) && links.get(id).pc.connectionState === "connected");
-      text = up.length === them.length ? `voice on with ${up.map(name).join(", ")}` : "voice connecting…";
-      text += choice === "ptt" ? " — hold ` to talk" : choice === "on" ? " — your mic is open" : " — listening";
+      text = up.length === them.length ? `voice connected with ${up.map(name).join(", ")}` : "voice connecting…";
+      text += choice === "ptt" ? " — hold ` to talk" : choice === "on" && mic ? " — your mic is open" : choice === "listen" ? " — listening" : "";
     }
+    const blocked = Array.from(links.values()).some((l) => l.playbackError);
+    if (blocked) text += " — audio playback blocked; click Enable voice playback";
+    if (resume) resume.hidden = !blocked;
+    if (micError) text += " — " + micError;
+    if (micWanted) text += " — waiting for microphone permission";
+    if (mic?.getAudioTracks().some((t) => t.muted)) text += " — microphone input is muted or unavailable";
     state.textContent = text;
     // The control lights up for a player who has not opted in while another has.
     sel.parentElement.classList.toggle("attention", !optedIn(choice) && them.some((id) => optedIn(remote.get(id))));
@@ -178,12 +252,123 @@ export function initVoice(host) {
   }
 
   sel.addEventListener("change", async () => {
+    const previous = choice;
     choice = CHOICES.includes(sel.value) ? sel.value : "off";
-    save();
-    closeAll();  // (a new negotiation carries the new mic or its absence)
+    pttDown = false; micError = "";
+    save(); applyMute();
+    // PTT and Always share the same sending track; applyMute handles the switch.
+    // Only changes to sending/receiving capability need a new negotiation.
+    if (talks(previous) !== talks(choice) || optedIn(previous) !== optedIn(choice)) closeAll();
     if (talks(choice)) await acquireMic(); else releaseMic();
     host.announce();
     void update();
+  });
+  input?.addEventListener("change", async () => {
+    inputId = input.value;
+    try { localStorage.setItem(INPUT_KEY, inputId); } catch (e) { /* not kept */ }
+    micError = "";
+    if (!talks(choice)) { render(); return; }
+    releaseMic();
+    const stream = await acquireMic();
+    if (!stream) { void update(); return; }
+    if (mic !== stream || !talks(choice)) return;
+    // Switching to another audio source does not need SDP negotiation or a new
+    // peer connection. Keep the established voice path and replace its sender.
+    const track = stream.getAudioTracks()[0];
+    for (const [id, link] of links) {
+      const sender = link.pc.getSenders().find((s) => s.track?.kind === "audio");
+      if (!sender || mic !== stream) continue;
+      try { await sender.replaceTrack(track); }
+      catch (e) {
+        if (links.get(id) !== link || mic !== stream) continue;
+        micError = `Could not switch microphone (${e.name}). Turn Voice off and on to retry.`;
+        log("voice: " + micError);
+      }
+    }
+    render();
+  });
+  navigator.mediaDevices?.addEventListener("devicechange", () => void refreshInputs());
+  void refreshInputs();
+
+  // A report contains counters and states, never microphone recordings, SDP,
+  // candidate IP addresses or TURN credentials. Sample twice to see progress.
+  async function report() {
+    const peers = [];
+    for (const [id, link] of links) {
+      const row = { id, choice: remote.get(id), connection: link.pc.connectionState,
+        ice: link.pc.iceConnectionState, signaling: link.pc.signalingState,
+        playback: !link.audio ? "no track" : link.playbackError || (link.audio.paused ? "paused" : "playing"),
+        output: link.audio ? { muted: link.audio.muted, volume: link.audio.volume, readyState: link.audio.readyState } : null,
+        directions: link.pc.getTransceivers().map((t) => ({ requested: t.direction, negotiated: t.currentDirection,
+          sending: t.sender.track ? { enabled: t.sender.track.enabled, readyState: t.sender.track.readyState } : null })),
+        receivedTrack: link.audio?.srcObject?.getAudioTracks().map((t) => ({readyState: t.readyState, muted: t.muted})),
+        sentBytes: 0, receivedBytes: 0, receivedPackets: 0, receivedEnergy: 0 };
+      try {
+        const stats = await link.pc.getStats();
+        stats.forEach((s) => {
+          if (s.type === "outbound-rtp" && s.kind === "audio") {
+            row.sentBytes += s.bytesSent || 0;
+            const source = stats.get(s.mediaSourceId);
+            if (source) { row.inputLevel = source.audioLevel; row.inputEnergy = source.totalAudioEnergy; }
+          }
+          if (s.type === "inbound-rtp" && s.kind === "audio") {
+            row.receivedBytes += s.bytesReceived || 0; row.receivedPackets += s.packetsReceived || 0;
+            row.receivedEnergy += s.totalAudioEnergy || 0; row.receivedLevel = s.audioLevel;
+            row.packetsLost = s.packetsLost; row.jitter = s.jitter;
+          }
+          if (s.type === "transport" && s.selectedCandidatePairId) {
+            const pair = stats.get(s.selectedCandidatePairId);
+            row.route = {local: stats.get(pair?.localCandidateId)?.candidateType,
+              remote: stats.get(pair?.remoteCandidateId)?.candidateType, roundTripSeconds: pair?.currentRoundTripTime};
+          }
+        });
+      } catch (e) { row.statsError = e.name; }
+      peers.push(row);
+    }
+    return { version: 1, time: new Date().toISOString(), choice,
+      microphone: { pending: !!micWanted, error: micError,
+        tracks: mic ? mic.getAudioTracks().map((t) => ({ label: t.label, enabled: t.enabled, muted: t.muted, readyState: t.readyState })) : [] },
+      participants: others().map((id) => ({id, choice: remote.get(id) || "unknown"})),
+      peers, events: events.slice() };
+  }
+  let inspecting = false, lastInputEnergy = null, lastMicGeneration = 0, quietSince = 0;
+  async function showReport() {
+    if (inspecting) return;
+    inspecting = true;
+    const generation = micGeneration;
+    try {
+      const snapshot = await report();
+      if (generation !== micGeneration) return;
+      if (details?.open && diagnostics) diagnostics.textContent = JSON.stringify(snapshot, null, 2);
+      if (!inputState) return;
+      const track = snapshot.microphone.tracks[0];
+      inputState.hidden = !track;
+      if (!track) return;
+      if (lastMicGeneration !== generation) { lastInputEnergy = null; quietSince = 0; lastMicGeneration = generation; }
+      const sources = snapshot.peers.filter((p) => typeof p.inputEnergy === "number");
+      const energy = sources.length ? Math.max(...sources.map((p) => p.inputEnergy)) : null;
+      let text;
+      if (!track.enabled) { text = "muted — hold ` to talk"; quietSince = 0; }
+      else if (track.muted) text = "input unavailable — check your microphone";
+      else if (energy === null) text = "waiting for a voice connection to measure input";
+      else if (lastInputEnergy !== null && energy > lastInputEnergy) { text = "sound detected"; quietSince = 0; }
+      else {
+        if (!quietSince) quietSince = Date.now();
+        text = Date.now() - quietSince >= 5000
+          ? "no sound detected. If you are speaking, check your input device, input volume, and laptop lid."
+          : "speak to check input";
+      }
+      lastInputEnergy = energy;
+      inputState.textContent = `${track.label || "Microphone"}: ${text}`;
+    }
+    finally { inspecting = false; }
+  }
+  details?.addEventListener("toggle", () => { if (details.open) void showReport(); });
+  setInterval(() => { if (details?.open || mic) void showReport(); }, 1000);
+  $("voiceCopy")?.addEventListener("click", async () => {
+    const text = JSON.stringify(await report(), null, 2);
+    try { await navigator.clipboard.writeText(text); diagnostics.textContent = "Copied voice report.\n" + text; }
+    catch (e) { diagnostics.textContent = "Select and copy this report:\n" + text; }
   });
   // Push to talk: the backquote key, which neither game uses, held down.  The
   // key stops here and does not reach the game.
@@ -195,14 +380,25 @@ export function initVoice(host) {
   render();
   return {
     choice: () => choice,
-    remote: (id, c) => { remote.set(id, CHOICES.includes(c) ? c : "off"); void update(); },
-    forget: (id) => { remote.delete(id); close(id); render(); },
+    remote: (id, c) => {
+      c = CHOICES.includes(c) ? c : "off";
+      const previous = remote.get(id);
+      remote.set(id, c);
+      // The lower id must offer again when the answerer changes Listen/Always.
+      if (talks(previous) !== talks(c) || optedIn(previous) !== optedIn(c)) close(id);
+      void update();
+    },
+    forget: (id) => { remote.delete(id); close(id); void update(); },
     signal,
     warning,
     ptt,
     update: () => void update(),
-    stopAll: () => { closeAll(); render(); },
-    // For tests: the connection state of each voice link.
+    stopAll: () => {
+      ++roomGeneration; closeAll(); releaseMic(); remote.clear(); pttDown = false; micError = ""; render();
+    },
+    report,
+    // The legacy hearing flag only confirms a track exists. report() separates
+    // network counters from actual incoming energy and browser playback.
     links: () => Object.fromEntries(Array.from(links, ([id, l]) => [id, { state: l.pc.connectionState, hearing: !!(l.audio && l.audio.srcObject) }])),
   };
 }
