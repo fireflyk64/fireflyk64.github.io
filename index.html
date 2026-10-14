@@ -70,8 +70,8 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .go { margin-top: auto; padding-top: 6px; font: 600 14px/1 var(--display); color: var(--hue); }
 .extra { position: relative; z-index: 1; font-size: 14px; }   /* above the card-wide link */
 .extra a { color: var(--hue); }
-.card img.shot { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); margin: 6px 0 2px; }
-.extra + .extra { margin-top: -4px; }
+.card .shots { display: grid; gap: 6px; margin: 6px 0 2px; }
+.card .shots img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); }
 details.versions { position: relative; z-index: 1; font-size: 14px; }
 details.versions summary { cursor: pointer; color: var(--muted); width: fit-content; }
 details.versions summary:hover { color: var(--fg); }
@@ -139,10 +139,12 @@ footer a { color: inherit; }
       <p class="tag">Co-op space combat · DOS</p>
       <h3><a href="dosbox/">Wing Commander Multiplayer</a></h3>
       <p class="desc">Fly Wing Commander or Wing Commander II as wingmen with a friend. Bring your own GOG copy and share a room code.</p>
-      <img class="shot" src="wcmulti/img-target.png" width="640" height="400" alt="The Hornet cockpit in Wing Commander, out in empty space" loading="lazy">
+      <div class="shots">
+        <img src="wcmulti/wc-coop-1.webp" width="800" height="349" alt="Wing Commander II, first player's cockpit: closing on a Kilrathi ship, 1715 m" loading="lazy">
+        <img src="wcmulti/wc-coop-2.webp" width="800" height="350" alt="Second player's cockpit, same moment: the same Kilrathi ship at 1287 m, taking hits" loading="lazy">
+      </div>
       <p class="go">Launch</p>
-      <p class="extra">Watch it in action: <a href="https://www.youtube.com/watch?v=uO2p6kWG9Ik">the video</a></p>
-      <p class="extra">The story behind it: <a href="wcmulti/">an 11 year journey</a></p>
+      <p class="extra"><a href="https://www.youtube.com/watch?v=uO2p6kWG9Ik">Watch the video</a> · <a href="wcmulti/">Read the story</a></p>
     </article>
 
     <article class="card" style="--hue: #2bb3c0">
