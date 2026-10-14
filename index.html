@@ -68,7 +68,7 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .sub { font: 500 15px/1.3 var(--display); color: var(--muted); margin: -4px 0 0; }
 .card p.desc { margin: 0; color: var(--fg); opacity: .9; }
 .go { margin-top: auto; padding-top: 6px; font: 600 14px/1 var(--display); color: var(--hue); }
-.extra { position: relative; z-index: 1; font-size: 14px; }   /* above the card-wide link */
+.extra { position: relative; z-index: 1; font-size: 14px; margin: 0; }   /* above the card-wide link */
 .extra a { color: var(--hue); }
 /* the Wing Commander thumbnail: hovering it pops a large view of the whole shot over the page, the layout never moves */
 .thumb { position: relative; z-index: 2; display: block; margin: 6px 0 2px; }   /* above the card's other links, so the callout covers them */
@@ -131,6 +131,7 @@ footer a { color: inherit; }
       <p class="sub">Battle across Andromeda</p>
       <p class="desc">A 4X strategy game inspired by Master of Orion 2: economy, research, colonies, leaders, espionage and diplomacy, with simultaneous turns and peer-to-peer multiplayer.</p>
       <p class="go">Play the latest version</p>
+      <p class="extra"><a href="https://www.youtube.com/watch?v=_lPZVP7lgwM">Watch the video</a></p>
       <details class="versions">
         <summary>Earlier versions</summary>
         <ol>
