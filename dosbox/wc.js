@@ -131,11 +131,22 @@ $("copyLog").addEventListener("click", async () => {
   catch (e) { const r = document.createRange(); r.selectNodeContents(logEl); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); $("copyLog").textContent = "Selected: press Ctrl+C"; }
   setTimeout(() => { $("copyLog").textContent = "Copy log"; }, 2500);
 });
-function sourceStatus(text) { $("sourceStatus").textContent = text; }
+function sourceStatus(text) { $("sourceStatus").textContent = text; $("sourceStatus").removeAttribute("title"); }
 const mb = (n) => (n / 1048576).toFixed(1) + " MB";
 
 // Prefill from the URL (?room=CODE&callsign=...) so a link can be shared.
 for (const k of ["room", "callsign", "firstname", "lastname", "players"]) if (query.get(k)) $(k).value = query.get(k);
+// The pilot's names are remembered in this browser and filled in on the next
+// visit.  A name the link brought is the pilot's own (the page's links carry
+// no names but the ones typed here) and is kept too; what the pilot types
+// over either is what is kept from then on.
+const NAME_KEY = (k) => `wc:name:${k}`;
+const keepName = (k) => { try { localStorage.setItem(NAME_KEY(k), $(k).value.trim()); } catch (e) { /* not kept */ } };
+for (const k of ["callsign", "firstname", "lastname"]) {
+  if ($(k).value) keepName(k);
+  else { try { $(k).value = localStorage.getItem(NAME_KEY(k)) || ""; } catch (e) { /* none */ } }
+  $(k).addEventListener("change", () => keepName(k));
+}
 if (query.get("relay")) $("relay").checked = true;
 if (query.get("verbose")) $("verbose").checked = true;
 // A link to a room (?room=CODE) whose room this page has not tried to join
@@ -195,10 +206,17 @@ function setSource(s, want) {
   if (s) sel.value = s.game.id;
   $("programLabel").hidden = !s || s.programs.length < 2;
   if (s) {
-    sourceStatus(`Ready: ${s.game.title} from ${s.label} (${s.files.length} files, ${mb(totalSize(s.files))}).` +
+    // (Where the files came from and how many is a tooltip: the panel
+    // stays a few lines, and Fly stays in view.)
+    sourceStatus(`Ready: ${s.game.title}.` +
                  (!s.game.multiplayer ? " The multiplayer hooks do not know this program, so it runs single-player."
                   : !s.known ? ` Its ${gameById(s.game.id).detect[0]} is not the build the multiplayer hooks know: it runs single-player, and the public lobby stays closed.` : ""));
+    $("sourceStatus").title = `From ${s.label}: ${s.files.length} files, ${mb(totalSize(s.files))}.`;
   }
+  $("source").classList.toggle("loaded", !!s);
+  // The help under the game is the loaded game's own.
+  const hints = s && gameInfo() && gameInfo().campaign && gameInfo().campaign.hints;
+  $("helpMission").textContent = (hints && hints.help) || (s ? "The multiplayer hooks do not know this program: it runs single-player." : "Load the game files (step 1): the help is the game's own.");
   describeSaves();
   // (Wing Commander II's people use a first name; the first game has none.)
   $("firstnameLabel").hidden = !(gameInfo() && gameInfo().firstName);
@@ -665,14 +683,39 @@ function updateActions() {
   const ready = !!source && !!lobby.game && !running && !wrong;
   $("fly").disabled = !ready;
   $("advertise").hidden = !lobby.game || running || !lobbyReady() || !lobby.game.players.some((p) => !p.occupied);
-  if (running) return;
-  if (wrong) status(wrong);
-  else if (!source && !lobby.game) status(linkWaits() ? `Load your game files (step 1) and you are in room ${$("room").value.trim()}; "Join room" takes a seat in it without them.` : "Load the game files and join a room first.");
-  else if (!source) status(`Join succeeded; now load ${codeGame(lobby.game.code) ? codeGame(lobby.game.code).title : "the game files"} above.`);
-  else if (!lobby.game) status("Game files ready; join a room to fly with friends.");
-  else if (isHost()) { $("fly").textContent = "Fly (starts everyone)"; status(`You host room ${lobby.game.code}. Press Fly when your wingmen are in.`); }
-  else { $("fly").textContent = "Fly"; status(lobby.flying.has(0) ? "The host is already flying: press Fly to join the mission." : "Waiting for the host to start; Fly joins on your own too."); }
+  if (!running) {
+    if (wrong) status(wrong);
+    else if (!source && !lobby.game) status(linkWaits() ? `Load your game files (step 1) and you are in room ${$("room").value.trim()}; "Join room" takes a seat in it without them.` : "Load the game files and join a room first.");
+    else if (!source) status(`Join succeeded; now load ${codeGame(lobby.game.code) ? codeGame(lobby.game.code).title : "the game files"} above.`);
+    else if (!lobby.game) status("Game files ready; join a room to fly with friends.");
+    else if (isHost()) { $("fly").textContent = "Fly (starts everyone)"; status(`You host room ${lobby.game.code}. Press Fly when your wingmen are in.`); }
+    else { $("fly").textContent = "Fly"; status(lobby.flying.has(0) ? "The host is already flying: press Fly to join the mission." : "Waiting for the host to start; Fly joins on your own too."); }
+  }
+  renderTopAction();
 }
+
+// The button at the top of the page, in view however the page is scrolled:
+// Fly once there is a room to fly from (the same as the Fly button below),
+// before that the step that comes next, and the full screen while the game
+// runs.
+function renderTopAction() {
+  const b = $("topAction");
+  const step = running ? "screen" : !source ? "files" : !lobby.game ? "room" : "fly";
+  b.dataset.step = step;
+  b.disabled = step === "fly" && $("fly").disabled;
+  b.textContent = { screen: "Full screen", files: "Load game files", room: "Join room", fly: "Fly" }[step];
+  b.title = { screen: "The game full screen; holding Esc leaves it",
+              files: "Your own Wing Commander or Wing Commander II: a .zip of the game folder, or the GOG installer",
+              room: "Take a seat in the room of step 2 (made if nobody has); wingmen join by its code or this page's link",
+              fly: $("status").textContent }[step];
+}
+$("topAction").addEventListener("click", () => {
+  const step = $("topAction").dataset.step;
+  if (step === "screen") goFullscreen();
+  else if (step === "files") $("gamefile").click();
+  else if (step === "room") { $("roomPanel").scrollIntoView({ block: "nearest", behavior: "smooth" }); void joinRoom(); }
+  else $("fly").click();
+});
 
 function onLobbyEvent(ev) {
   switch (ev.type) {
@@ -828,18 +871,35 @@ async function joinRoom({ create = true } = {}) {
   }
 }
 
-// A room code clicked in the public lobby.
+// A room code clicked in the public lobby: the pilot wants to be in that
+// room.  One they sit in alone (their own, made by "Join room" or by an
+// advertisement) is left for it; one with company is not left behind by a
+// click.  What came of it is said under the lobby's chat, where the click
+// was, as well as in the status line.
 async function joinFromLobby(code) {
-  if (running) { status(`Reload the page to join ${code}: this page's game has been started.`); return; }
+  const tell = (text) => { status(text); hall.note(text); };
+  if (running) { tell(`Reload the page to join ${code}: this page's game has been started.`); return; }
+  if (lobby.game && lobby.game.code === code) { tell(`You are in room ${code} already (step 2).`); return; }
+  let left = "";
   if (lobby.game) {
-    status(lobby.game.code === code ? `You are in room ${code}.` : `You are in room ${lobby.game.code}: leave it (step 2) to join ${code}.`);
-    return;
+    const company = lobby.game.players.some((p) => p.occupied && p.id !== lobby.game.selfId);
+    if (company) { tell(`You are in room ${lobby.game.code} with somebody: leave it (step 2) to join ${code}.`); return; }
+    left = lobby.game.code;
+    chatLine(`You left room ${esc(left)} for ${esc(code)}`, "sys");
+    leaveRoom();
   }
   const typed = $("room").value;
   $("room").value = code;
   await joinRoom({ create: false });
-  if (lobby.game) $("setup").scrollIntoView({ block: "nearest", behavior: "smooth" });
-  else { $("room").value = typed; retagRoom(); }
+  if (lobby.game) {
+    tell(`You are in room ${code} (step 2): the host presses Fly when everyone is in.`);
+    $("setup").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } else {
+    const why = $("status").textContent;
+    $("room").value = typed; retagRoom();
+    if (left) { await joinRoom(); if (lobby.game) status(why); }  // (back in the room of one's own)
+    hall.note(why);  // (why not, said where the click was)
+  }
 }
 
 // A room advertised in the public lobby: its code (which names the game),
@@ -966,6 +1026,7 @@ async function start(fromGesture) {
   const voiceWarning = voice.warning();
   if (voiceWarning) { chatLine(esc(voiceWarning), "sys"); log("voice: " + voiceWarning); }
   $("fly").disabled = true;
+  renderTopAction();
   for (const el of ["gamefile", "exePicker", "callsign", "firstname", "lastname", "verbose", "hint", "leave"]) $(el).disabled = true;
   sourceButtons(false);
   try {
@@ -1070,6 +1131,7 @@ async function start(fromGesture) {
     hall.reopen();
     log("failed: " + (e && e.stack ? e.stack : e));
     status("Failed to start: " + (e && e.message ? e.message : e));
+    renderTopAction();
   }
 }
 
@@ -1179,7 +1241,7 @@ void initSources();
 // does, has said nothing to the lobby server until a game is loaded or
 // "Join room" is pressed.
 function joinLinked() { if (linkWaits() && lobbyReady()) void joinRoom(); }
-if (linked) updateActions();
+updateActions();
 // The public lobby is where a pilot with a game to fly is unless it left:
 // hall.auto says when not (?lobby=off stays out this once, for tests).  The
 // page enters when the game files are there (setSource), and not before: a
