@@ -67,9 +67,11 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .card h3 a:focus-visible::after { outline: 2px solid var(--hue); outline-offset: 3px; }
 .sub { font: 500 15px/1.3 var(--display); color: var(--muted); margin: -4px 0 0; }
 .card p.desc { margin: 0; color: var(--fg); opacity: .9; }
-.go { margin-top: auto; padding-top: 6px; font: 600 14px/1 var(--display); color: var(--hue); }
-.extra { position: relative; z-index: 1; font-size: 14px; margin: 0; }   /* above the card-wide link */
-.extra a { color: var(--hue); }
+.go { margin-top: auto; padding-top: 6px; font: 600 16px/1.2 var(--display); color: var(--hue); }
+.extra { position: relative; z-index: 1; font: 600 16px/1.2 var(--display); margin: 0; }   /* above the card-wide link */
+.extra a { color: var(--hue); text-underline-offset: 3px; }
+.actions { margin-top: auto; padding-top: 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; }   /* the main action and its extra links on one line */
+.actions .go { margin: 0; padding: 0; }
 /* the Wing Commander thumbnail: a click opens the whole shot over the page (a checkbox, no script); a click anywhere closes it */
 .thumb { position: relative; z-index: 2; display: block; margin: 6px 0 2px; cursor: zoom-in; }   /* above the card's other links */
 .thumb img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); }
@@ -118,8 +120,7 @@ footer a { color: inherit; }
       <label class="thumb" for="wcshot" title="Click to enlarge">
         <img src="wcmulti/wc-coop-thumb.webp" width="1000" height="312" alt="Two players flying Wing Commander together, side by side: Maverick has an enemy fighter in the targeting brackets while Angel's message comes through as [Transmit Comms] Oui. I am" loading="lazy">
       </label>
-      <p class="go">Launch</p>
-      <p class="extra"><a href="https://www.youtube.com/watch?v=uO2p6kWG9Ik">Watch the video</a> · <a href="wcmulti/">Read the story</a></p>
+      <div class="actions"><p class="go">Play</p><p class="extra"><a href="https://www.youtube.com/watch?v=uO2p6kWG9Ik">Watch the video</a> · <a href="wcmulti/">Read the story</a></p></div>
     </article>
 
     <article class="card feature" style="--hue: #8b6cff">
@@ -181,8 +182,14 @@ footer a { color: inherit; }
       <p class="tag">Game Boy · racing</p>
       <h3><a href="fsub/">FSUB Racer</a></h3>
       <p class="desc">A Game Boy racer you can steer by touch, keyboard or gamepad.</p>
-      <p class="go">Play</p>
-      <p class="extra"><a href="makingfsub/">Read how it works</a></p>
+      <div class="actions"><p class="go">Play</p><p class="extra"><a href="makingfsub/">Read how it works</a></p></div>
+      <details class="versions">
+        <summary>Earlier versions</summary>
+        <ol>
+          <li><a href="fsub/v1/">v1<span>Oct 4</span></a></li>
+          <li><a href="fsub/v0/">v0<span>Oct 4</span></a></li>
+        </ol>
+      </details>
     </article>
     <article class="card" style="--hue: #7fa71a">
       <p class="tag">Game Boy · runner</p>
@@ -211,6 +218,12 @@ footer a { color: inherit; }
       <h3><a href="https://github.com/danielrh/lobbylink">lobbylink</a></h3>
       <p class="desc">The room-code lobby behind the multiplayer games on this page: a small Go server that introduces browsers to each other, then gets out of the way while they talk over WebRTC.</p>
       <p class="go">View on GitHub</p>
+    </article>
+    <article class="card feature" style="--hue: #7fa71a">
+      <p class="tag">Blog · FSUB Racer</p>
+      <h3><a href="makingfsub/">fsub: porting F-Zero to the Game Boy</a></h3>
+      <p class="desc">How a 1989 handheld draws a bending road, a city streaming past and seven rivals: palette and scroll rewritten on every scanline, a 54-cycle interrupt, and rivals that only move every other frame.</p>
+      <p class="go">Read the post</p>
     </article>
   </div>
 </main>
