@@ -1,76 +1,76 @@
 {
- "build": "6ec38427",
+ "build": "4a412c5a",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
-   "bytes": 1131054,
-   "sha1": "b275e63ed2a1d437ac0f939f58adc5ad9e577604",
+   "bytes": 3163522,
+   "sha1": "92c8ed9ea9addcac14fc6c1f5cd7fc4f63091aa8",
    "name": "Schroedinger"
   },
   "SHIP01": {
    "file": "rv/SHIP01.RV.gz",
-   "bytes": 1396561,
-   "sha1": "32a540437c5eae5c70a2384c17054ab28f906720",
+   "bytes": 3900751,
+   "sha1": "d8cd7e89d43aad0fefcb6dfde3fd719f6381861f",
    "name": "Franklin"
   },
   "SHIP02": {
    "file": "rv/SHIP02.RV.gz",
-   "bytes": 1579948,
-   "sha1": "8c4c465f7dfc9ef9c07aacc10133ae8829411090",
+   "bytes": 4416835,
+   "sha1": "3e1ba4e7bb7fb2aaa04fdf99ad74214874374463",
    "name": "Gawain"
   },
   "SHIP03": {
    "file": "rv/SHIP03.RV.gz",
-   "bytes": 1340102,
-   "sha1": "f542b68c2fb0e12bad0916199846b7bfcb62ea88",
+   "bytes": 3750487,
+   "sha1": "da18ddf710e7dd532f930263b4dbda299b6b5dc0",
    "name": "Redeemer"
   },
   "SHIP04": {
    "file": "rv/SHIP04.RV.gz",
-   "bytes": 3011827,
-   "sha1": "78830e7b9809ef842fb71ef3f02d1c1cd23aecb1",
+   "bytes": 8405149,
+   "sha1": "72c8b8013aa3b4b8fb95617a8d2e637d0b24fd8b",
    "name": "Pacifier"
   },
   "SHIP05": {
    "file": "rv/SHIP05.RV.gz",
-   "bytes": 2216102,
-   "sha1": "661ba60046e1d427c0e1b2d772c3d6c4d3614856",
+   "bytes": 6197009,
+   "sha1": "a5921ac53c1eca0037cabb203ec2cc10946c3b90",
    "name": "Lancelot"
   },
   "SHIP06": {
    "file": "rv/SHIP06.RV.gz",
-   "bytes": 2189735,
-   "sha1": "38434a39c52fce96f85305ce36769686d864a03d",
+   "bytes": 6081558,
+   "sha1": "95e11c911068c4124c65f005f371b0bf405a6d40",
    "name": "Progeny"
   },
   "SHIP08": {
    "file": "rv/SHIP08.RV.gz",
-   "bytes": 1250775,
-   "sha1": "6bf9d7200651e336d08126bc0456b000415af919",
+   "bytes": 3503222,
+   "sha1": "7141ab8056d3d7db350c2e021d8575d268d684d9",
    "name": "Nicander"
   },
   "SHIP09": {
    "file": "rv/SHIP09.RV.gz",
-   "bytes": 1499811,
-   "sha1": "2d408592b5cfe9daceba6f9b37b2d388137b33f0",
+   "bytes": 4201683,
+   "sha1": "77ab1bd13c250dcd6b0cf5ae05f320e5f1db2ca3",
    "name": "Ariston"
   },
   "SHIP0A": {
    "file": "rv/SHIP0A.RV.gz",
-   "bytes": 2337405,
-   "sha1": "10c170b82ba41f4cd29b848ca88733fbb320bd4c",
+   "bytes": 6511281,
+   "sha1": "46d2068fdc46c46572549afd39bf104e57c7fa20",
    "name": "Areus"
   },
   "SHIP0B": {
    "file": "rv/SHIP0B.RV.gz",
-   "bytes": 1373364,
-   "sha1": "9bcc1412919e8edae812ae074e0ae2d3b9444be6",
+   "bytes": 3840011,
+   "sha1": "1636a2a0d9db01a9d8144e35afc360e392a6abe5",
    "name": "Agis"
   },
   "SHIP0C": {
    "file": "rv/SHIP0C.RV.gz",
-   "bytes": 2819476,
-   "sha1": "46f91f15ac71e1d4cd66a459fea00bc547ea9016",
+   "bytes": 7852829,
+   "sha1": "7e0f74d4422944a07031d8ff172d74f3d4f1c8ce",
    "name": "Cleomenes"
   },
   "SHIP0D": {
@@ -81,38 +81,38 @@
   },
   "SHIP10": {
    "file": "rv/SHIP10.RV.gz",
-   "bytes": 935186,
-   "sha1": "8fb0dbc711b95288519e4d69fb60ae8dcaaeacaa",
+   "bytes": 2595330,
+   "sha1": "067ae2b4a8f2d45141cc09483533e377169a3cb0",
    "name": "Shizu"
   },
   "SHIP11": {
    "file": "rv/SHIP11.RV.gz",
-   "bytes": 1449467,
-   "sha1": "a4d51cac9b97f3e7100f37704565dcb484c538ea",
+   "bytes": 4006675,
+   "sha1": "da25b5113cf74484fc3dcac3f5259de7200e96a1",
    "name": "Zhuangzong"
   },
   "SHIP12": {
    "file": "rv/SHIP12.RV.gz",
-   "bytes": 913187,
-   "sha1": "5def01d4be1ead48253746dd6f3ecca289421357",
+   "bytes": 2551578,
+   "sha1": "620266ec00861ee6ffe64dcfb30f253a4020fe1c",
    "name": "Taizong"
   },
   "SHIP13": {
    "file": "rv/SHIP13.RV.gz",
-   "bytes": 768571,
-   "sha1": "7b73489160b017b730160f1ca7a2d59e12c30e97",
+   "bytes": 2147389,
+   "sha1": "6975c700366e4c7d692c8c20a56267da28c2a267",
    "name": "Shizong"
   },
   "SHIP14": {
    "file": "rv/SHIP14.RV.gz",
-   "bytes": 1820145,
-   "sha1": "8ea802fa74b1809f49541a5fdda3592ded83a594",
+   "bytes": 5048814,
+   "sha1": "ac1b0dd27cf843c14bfecbfeacd971845da75cb8",
    "name": "Xuanzong"
   },
   "SHIP15": {
    "file": "rv/SHIP15.RV.gz",
-   "bytes": 422964,
-   "sha1": "be1654d5efa424a34e1b37893969224a7dec0d37",
+   "bytes": 1182037,
+   "sha1": "ffb4d278e83e524bd420b6f34066dcc2f2c274e2",
    "name": "Gaozong"
   }
  }
