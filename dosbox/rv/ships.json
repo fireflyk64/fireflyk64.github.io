@@ -1,5 +1,5 @@
 {
- "build": "fddd0fff",
+ "build": "43247c49",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
@@ -119,8 +119,8 @@
  "files": {
   "ROCKS.DAT": {
    "file": "rv/ROCKS.DAT.gz",
-   "bytes": 8851986,
-   "sha1": "755753c50fcdcf9e353c81d22652f1ed490563a4"
+   "bytes": 7114062,
+   "sha1": "1adefd37625aa82201f3cd42b986e7bf8c0b11ae"
   }
  }
 }
