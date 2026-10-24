@@ -1,5 +1,5 @@
 {
- "build": "4a412c5a",
+ "build": "fddd0fff",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
@@ -114,6 +114,13 @@
    "bytes": 1182037,
    "sha1": "ffb4d278e83e524bd420b6f34066dcc2f2c274e2",
    "name": "Gaozong"
+  }
+ },
+ "files": {
+  "ROCKS.DAT": {
+   "file": "rv/ROCKS.DAT.gz",
+   "bytes": 8851986,
+   "sha1": "755753c50fcdcf9e353c81d22652f1ed490563a4"
   }
  }
 }
