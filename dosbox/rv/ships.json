@@ -1,5 +1,5 @@
 {
- "build": "1491330c",
+ "build": "9ab9150d",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
@@ -114,6 +114,12 @@
    "bytes": 1182037,
    "sha1": "ffb4d278e83e524bd420b6f34066dcc2f2c274e2",
    "name": "Gaozong"
+  },
+  "SHIP20": {
+   "file": "rv/SHIP20.RV.gz",
+   "bytes": 1582445,
+   "sha1": "ea0d864d0d0f3c6252a699bbc746d85d09d5e8ff",
+   "name": "Vigilance"
   },
   "SHIP21": {
    "file": "rv/SHIP21.RV.gz",
