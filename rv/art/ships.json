@@ -1,5 +1,5 @@
 {
- "build": "ebae1a2f",
+ "build": "9ab9150d",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
@@ -114,6 +114,42 @@
    "bytes": 1182037,
    "sha1": "ffb4d278e83e524bd420b6f34066dcc2f2c274e2",
    "name": "Gaozong"
+  },
+  "SHIP20": {
+   "file": "rv/SHIP20.RV.gz",
+   "bytes": 1582445,
+   "sha1": "ea0d864d0d0f3c6252a699bbc746d85d09d5e8ff",
+   "name": "Vigilance"
+  },
+  "SHIP21": {
+   "file": "rv/SHIP21.RV.gz",
+   "bytes": 895166,
+   "sha1": "1b999a4a1b111c05e7ff06656a59806f4b4adf37",
+   "name": "Kahan"
+  },
+  "SHIP24": {
+   "file": "rv/SHIP24.RV.gz",
+   "bytes": 809167,
+   "sha1": "76b1b38b0612b6696598a37b8f0d2fab64c3b872",
+   "name": "Ox"
+  },
+  "SHIP28": {
+   "file": "rv/SHIP28.RV.gz",
+   "bytes": 806984,
+   "sha1": "73c9afdcb08d4bac5c3f7a01f6cfd4bfba07e68f",
+   "name": "Agasicles"
+  },
+  "SHIP29": {
+   "file": "rv/SHIP29.RV.gz",
+   "bytes": 865544,
+   "sha1": "8df7b5e9c5d6c5db8d4551a9a486bea1205ec306",
+   "name": "Anaxidamus"
+  },
+  "SHIP2C": {
+   "file": "rv/SHIP2C.RV.gz",
+   "bytes": 964583,
+   "sha1": "123a8062c38455404d71b11e7bc0a5c280f03bd0",
+   "name": "Leonidas"
   }
  },
  "files": {
