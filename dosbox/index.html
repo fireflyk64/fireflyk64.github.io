@@ -213,6 +213,10 @@
   #screen:fullscreen #touch button { position: absolute; pointer-events: auto; opacity: .85; }
   #screen:fullscreen #touchKeys { top: 10px; right: 10px; }
   #screen:fullscreen #touchEsc { top: 10px; left: 10px; }
+  /* (each its own place: without one the three of 2026-10-31 piled up on Esc in the top left corner) */
+  #screen:fullscreen #touchComm { top: 64px; left: 10px; }
+  #screen:fullscreen #touchTgt { top: 64px; right: 10px; }
+  #screen:fullscreen #touchMissile { bottom: 10px; left: 10px; min-height: 64px; }
   #screen:fullscreen #touchFire { bottom: 10px; right: 10px; min-height: 64px; }
   #log { flex: 1 1 300px; min-height: 160px; max-height: 402px; overflow: auto; padding: 6px 8px; background: #010403; border: 1px solid var(--line2);
     color: #6fd398; font: 11px/1.35 var(--mono); white-space: pre-wrap; word-break: break-all; }
@@ -285,7 +289,7 @@
       </div>
       <form id="setup">
         <label title="A code of the page's own making starts with the game it is for (WC1, WC2, SM2, SO1, SO2, SO3)">Room code <input type="text" id="room" placeholder="WC1-4821" pattern="[A-Za-z0-9_\-]{4,64}" required></label>
-        <label id="seatsLabel" title="The seats of a room you make: 2; 3 (in beta) for a third pilot; 1 to fly the game alone, as it is, with its own wingman, its own menus and its saved games (only the controller is the page's; no lobby server, nobody else comes in). Not remembered">Players <span class="boxrow"><input type="number" id="seats" min="1" max="3" step="1" value="2"><small class="beta" id="seatsBeta" hidden>beta</small></span></label>
+        <label id="seatsLabel" title="The seats of a room you make: 2; 3 (in beta) for a third pilot; 1 to fly the game alone, as it is, with its own wingman, its own menus and its saved games (only the controller is the page's; no lobby server, nobody else comes in), what a phone or a tablet starts at. Not remembered">Players <span class="boxrow"><input type="number" id="seats" min="1" max="3" step="1" value="2"><small class="beta" id="seatsBeta" hidden>beta</small></span></label>
         <label>Callsign <input type="text" id="callsign" placeholder="Maverick"></label>
         <label id="firstnameLabel" hidden>First name <input type="text" id="firstname" placeholder="Christopher" maxlength="12"></label>
         <label>Last name <input type="text" id="lastname" placeholder="Blair"></label>
