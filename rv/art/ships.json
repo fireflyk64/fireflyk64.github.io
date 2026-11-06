@@ -1,5 +1,5 @@
 {
- "build": "8412eb57",
+ "build": "8cafde71",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
@@ -152,11 +152,5 @@
    "name": "Leonidas"
   }
  },
- "files": {
-  "ROCKS.DAT": {
-   "file": "rv/ROCKS.DAT.gz",
-   "bytes": 7114062,
-   "sha1": "64652e1be0c6678fc46090556437db255dbf9373"
-  }
- }
+ "files": {}
 }
