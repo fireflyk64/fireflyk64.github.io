@@ -1018,6 +1018,10 @@ function wrongGame() {
 // for a host that is not there, or fly on alone.  The host's hello says it flies (lobby.flying); a host that has said
 // nothing GUEST_HELLO_MS after the guest came in (a native one: its game is the host, always in it) is not waited for.
 const GUEST_HELLO_MS = 5000;
+// The rooms this page has offered in the lobby (its Advertise, "/room": myRoom), for the page's life: Fly Alone is not offered
+// in one of them (the user, 2026-11-05: "can the fly alone button not show up for rooms that the user clicked advertise
+// in the lobby...we can store a small local hashtable in memory that recalls all room ids that have advertised")
+const advertised = new Set();
 const guestWaits = () => !!lobby.game && !soloRoom() && !isHost()
   && (lobby.names.has(0) ? !lobby.flying.has(0) : Date.now() - (lobby.joinedAt || 0) < GUEST_HELLO_MS);
 // A host alone in its room may fly alone instead (the user: "a Fly Single Player button when they are in a empty
@@ -1028,7 +1032,8 @@ function updateActions() {
   const ready = !!source && !!lobby.game && !running && !wrong;
   $("fly").disabled = !ready || guestWaits();
   // (in a room alone as its host, or in none yet, the lobby's alone: the user's "in a empty lobby")
-  $("flySolo").hidden = !source || running || !!wrong || (lobby.game ? !aloneInRoom() : linkWaits() || $("join").disabled);
+  $("flySolo").hidden = !source || running || !!wrong || (lobby.game ? !aloneInRoom() : linkWaits() || $("join").disabled)
+    || advertised.has(normalizeCode(lobby.game ? lobby.game.code : $("room").value.trim()));   // (offered in the lobby: not alone)
   $("advertise").hidden = !lobby.game || !lobbyReady() || !lobby.game.players.some((p) => !p.occupied);   // (in flight too)
   if (!running) {
     if (wrong) status(wrong);
@@ -1065,6 +1070,49 @@ $("topAction").addEventListener("click", () => {
   else if (step === "files") $("gamefile").click();
   else if (step === "room") { $("roomPanel").scrollIntoView({ block: "nearest", behavior: "smooth" }); void joinOpenGame(); }
   else $("fly").click();
+});
+
+// The doorbell: a pilot came into the room this page hosts and the host is not
+// flying yet, so it is time to press Fly (the user, 2026-11-05: "would be
+// nice to have a doorbell notif if someone shows up in a lobby you host, so
+// you know to start the game").  A two-note chime made here (no file), and
+// with the tab in the background its title says so until it is looked at.
+// Only a new pilot rings, not one whose socket came back (player-rejoined).
+let bellCtx = null, bellAt = -1e9, bellTitle = "";
+function doorbell() {
+  const now = performance.now();
+  if (now - bellAt < 3000) return;
+  bellAt = now;
+  log("lobby: doorbell: a pilot came into your room");
+  try {
+    bellCtx = bellCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (bellCtx.state === "suspended") void bellCtx.resume();
+    const t0 = bellCtx.currentTime + 0.02;
+    [[659.3, 0], [523.3, 0.42]].forEach(([f, at]) => {
+      const out = bellCtx.createGain();
+      out.connect(bellCtx.destination);
+      out.gain.setValueAtTime(0.0001, t0 + at);
+      out.gain.exponentialRampToValueAtTime(0.22, t0 + at + 0.01);
+      out.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 1.4);
+      for (const [mult, level] of [[1, 1], [2.76, 0.28], [5.4, 0.1]]) {   // (a bell's partials)
+        const o = bellCtx.createOscillator(), g = bellCtx.createGain();
+        o.frequency.value = f * mult;
+        g.gain.value = level;
+        o.connect(g); g.connect(out);
+        o.start(t0 + at); o.stop(t0 + at + 1.5);
+      }
+    });
+    // (a context left running keeps an audio thread busy beside the game)
+    const ctx = bellCtx;
+    setTimeout(() => { if (performance.now() - bellAt >= 2500) void ctx.suspend(); }, 2600);
+  } catch (e) { /* no sound here */ }
+  if (document.hidden && !bellTitle) {
+    bellTitle = document.title;
+    document.title = "\u{1F514} A pilot joined your room";
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && bellTitle) { document.title = bellTitle; bellTitle = ""; }
 });
 
 function onLobbyEvent(ev) {
@@ -1151,6 +1199,7 @@ function onLobbyEvent(ev) {
       break;
     }
     case "player-joined": case "player-rejoined": case "player-replaced":
+      if (ev.type === "player-joined" && isHost() && !running && ev.playerId !== lobby.game.selfId) doorbell();
       lobby.links.set(ev.playerId, "down"); lobby.names.delete(ev.playerId); lobby.flying.delete(ev.playerId); lobby.games.delete(ev.playerId);
       voice.forget(ev.playerId);
       renderRoster(); updateActions(); break;   // (a host no longer alone: no Fly single player)
@@ -1332,6 +1381,7 @@ async function myRoom() {
   if (!lobby.game && seatCount() === 1) { status(alone); return null; }
   if (!lobby.game) await joinRoom();
   if (soloRoom()) { status(alone); return null; }
+  if (lobby.game) { advertised.add(normalizeCode(lobby.game.code)); updateActions(); }
   return lobby.game ? { code: lobby.game.code, offer: offerText() } : null;
 }
 $("advertise").addEventListener("click", () => { if (lobby.game) void hall.advertise(); });
@@ -1555,8 +1605,16 @@ $("flySolo").addEventListener("click", async () => {
   void start(true);
 });
 $("fullscreen").addEventListener("click", () => goFullscreen());
+// Whether Fly goes full screen: each pilot's own, ticked unless unticked in
+// this tab (the user, 2026-11-05: "The box should default to checked but
+// should be remembered by the browser session"); the Full screen button works
+// either way.
+const FULL_START_KEY = "wc:fullStart";
+try { if (sessionStorage.getItem(FULL_START_KEY) === "off") $("fullStart").checked = false; } catch (e) { /* ticked */ }
+$("fullStart").addEventListener("change", () => { try { sessionStorage.setItem(FULL_START_KEY, $("fullStart").checked ? "on" : "off"); } catch (e) { /* not kept */ } });
 // (#screen, the canvas and the touch controls: they come along into full screen)
 const screenEl = $("screen");
+$("fullStartLabel").hidden = !(screenEl.requestFullscreen || screenEl.webkitRequestFullscreen);   // (an iPhone has none)
 function goFullscreen() {
   const req = screenEl.requestFullscreen || screenEl.webkitRequestFullscreen;
   if (!req) return;
@@ -1766,7 +1824,7 @@ async function start(fromGesture) {
     for (const ev of ["pagehide", "visibilitychange"]) window.addEventListener(ev, keepSaves);
     $("fullscreen").hidden = !(screenEl.requestFullscreen || screenEl.webkitRequestFullscreen);   // (an iPhone has none)
     touch.show(true);
-    if (fromGesture) goFullscreen();
+    if (fromGesture && $("fullStart").checked) goFullscreen();
     status(together
       ? `Room ${cfg.code}. "Copy link" (step 2) gives friends the way in.`
       : `${source.game.title} is running.`);
