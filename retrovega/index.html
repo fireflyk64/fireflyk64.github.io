@@ -1,0 +1,1972 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Building RetroVega</title>
+<meta name="description" content="The engineering behind RetroVega, a new 16-bit DOS space sim: assembly hot loops, XMS as a blitter, an imaginary graphics card, a lightfield of pre-rendered ships, and a memory layout built to be puppeted for multiplayer.">
+<meta name="author" content="danielrh">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://fireflyk64.github.io/retrovega/">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://fireflyk64.github.io/retrovega/">
+<meta property="og:title" content="Building a new DOS space sim in 640K">
+<meta property="og:description" content="The engineering behind RetroVega, a new 16-bit DOS space sim: assembly hot loops, XMS as a blitter, an imaginary graphics card, a lightfield of pre-rendered ships, and a memory layout built for multiplayer.">
+<meta property="og:image" content="https://fireflyk64.github.io/retrovega/img/hero-flight.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="800">
+<meta property="og:image:alt" content="RetroVega's cockpit: an enemy targeted in a diamond bracket, a wingman's helmet on the comm screen">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2026-11-09T00:00:00-08:00">
+<meta property="article:author" content="https://graphics.stanford.edu/~danielh">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Building a new DOS space sim in 640K">
+<meta name="twitter:image" content="https://fireflyk64.github.io/retrovega/img/hero-flight.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #f5f3ec; --fg: #1c221e; --muted: #5d6862; --panel: #ebe8de; --line: #cdc8b9; --card: #fbfaf6;
+  --accent: #1e7a4c; --amber: #b07d0a; --blue: #3b55a8; --red: #b2432f; --violet: #7a4fb0; --teal: #1f7f86;
+  --mono-bg: #0f1612; --mono-fg: #c9e6d2; --mono-dim: #7fa58d;
+  --space: #05070a;
+  --display: "Chakra Petch", "Trebuchet MS", sans-serif;
+  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1411; --fg: #dde5df; --muted: #93a098; --panel: #161c18; --line: #2b352f; --card: #121814;
+  --accent: #5fd38d; --amber: #f0c04a; --blue: #8fa3ff; --red: #ef8a76; --violet: #c3a0f5; --teal: #5cc8cf;
+  --mono-bg: #090d0b; --mono-fg: #bfe3c9; --mono-dim: #6f9a7f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1411; --fg: #dde5df; --muted: #93a098; --panel: #161c18; --line: #2b352f; --card: #121814;
+  --accent: #5fd38d; --amber: #f0c04a; --blue: #8fa3ff; --red: #ef8a76; --violet: #c3a0f5; --teal: #5cc8cf;
+  --mono-bg: #090d0b; --mono-fg: #bfe3c9; --mono-dim: #6f9a7f; color-scheme: dark }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 28px 16px 90px; }
+header.top { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 18px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 6vw, 56px); line-height: 1.02; margin: 6px 0 14px; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 28px; line-height: 1.15; margin: 64px 0 6px; text-wrap: balance; scroll-margin-top: 16px; }
+h2 .num { color: var(--accent); font-family: var(--mono); font-size: 15px; font-weight: 500; margin-right: 10px; vertical-align: 4px; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 19px; margin: 30px 0 6px; }
+ul { padding-left: 1.25em; margin: 10px 0; }
+li { max-width: 74ch; margin: 5px 0; }
+li li { margin: 3px 0; color: var(--muted); }
+li::marker { color: var(--accent); }
+ul.lede li { font-size: 18px; }
+a { color: var(--accent); }
+code { font-family: var(--mono); font-size: .9em; background: var(--panel); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+nav.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 22px; font-size: 14px; margin-top: 18px; }
+nav.toc a { color: var(--fg); text-decoration: none; border-bottom: 1px dotted var(--line); padding: 2px 0; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+.hero { margin: 22px 0 8px; }
+.hero img { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 4px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 20px 0 8px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.tile b { display: block; font-family: var(--display); font-size: 26px; line-height: 1.1; color: var(--fg); font-variant-numeric: tabular-nums; }
+.tile span { font-size: 13px; color: var(--muted); }
+figure { margin: 26px 0 30px; }
+.fig { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 14px 12px; }
+.fig .tag { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.fig .tag .live { color: var(--accent); }
+.fig .tag .title { color: var(--fg); letter-spacing: .04em; text-transform: none; font-family: var(--display); font-size: 15px; font-weight: 600; }
+figcaption { font-size: 13.5px; color: var(--muted); margin-top: 8px; }
+figcaption ul { margin: 4px 0 0; }
+figcaption li { max-width: none; margin: 2px 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13.5px; margin: 10px 0 4px; }
+.controls label { display: inline-flex; gap: 8px; align-items: center; }
+.controls input[type=range] { width: 150px; accent-color: var(--accent); }
+.controls output { font-family: var(--mono); font-size: 12.5px; min-width: 3.5em; display: inline-block; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12.5px; background: none; color: var(--fg); border: 0; padding: 4px 10px; cursor: pointer; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+button.small { font: inherit; font-size: 12.5px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 10px; cursor: pointer; }
+.readout { font-family: var(--mono); font-size: 12.5px; color: var(--fg); background: var(--mono-bg); color: var(--mono-fg); border-radius: 5px; padding: 8px 10px; line-height: 1.5; white-space: pre-wrap; }
+.readout .d { color: var(--mono-dim); }
+.readout .hi { color: #f0c04a; }
+canvas, svg { display: block; max-width: 100%; }
+svg text { font-family: var(--body); }
+svg .mono { font-family: var(--mono); }
+.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+.two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.shots img { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 4px; background: #000; }
+.shots figcaption { margin-top: 4px; }
+.space { background: var(--space); border-radius: 5px; }
+.slider-cmp { position: relative; user-select: none; touch-action: none; border-radius: 5px; overflow: hidden; background: #000; cursor: ew-resize; }
+.slider-cmp img { display: block; width: 100%; height: auto; }
+.slider-cmp .over { position: absolute; inset: 0; overflow: hidden; }
+.slider-cmp .over img { position: absolute; top: 0; left: 0; height: 100%; width: auto; max-width: none; }
+.slider-cmp .bar { position: absolute; top: 0; bottom: 0; width: 2px; background: #f0c04a; transform: translateX(-1px); }
+.slider-cmp .knob { position: absolute; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: #f0c04a; color: #000; font: 600 13px var(--mono); display: grid; place-items: center; }
+.slider-cmp .lab { position: absolute; top: 8px; font: 500 11px var(--mono); letter-spacing: .08em; padding: 3px 6px; background: rgba(0,0,0,.7); color: #f0c04a; border-radius: 3px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+.tablewrap { overflow-x: auto; }
+table.fields { border-collapse: collapse; font-size: 12.5px; font-family: var(--mono); width: 100%; }
+table.fields td, table.fields th { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+table.fields th { font-family: var(--body); font-weight: 600; color: var(--muted); }
+table.fields tr.sel td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+table.fields tr { cursor: pointer; }
+.tip { position: fixed; pointer-events: none; background: var(--mono-bg); color: var(--mono-fg); font: 12px/1.45 var(--mono); padding: 6px 8px; border-radius: 4px; max-width: 320px; z-index: 10; display: none; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.note { border-left: 3px solid var(--amber); padding: 2px 0 2px 12px; margin: 14px 0; }
+footer { margin-top: 70px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 13.5px; color: var(--muted); }
+@media (max-width: 760px) {
+  .two { grid-template-columns: 1fr; }
+  .fig { overflow-x: auto; }
+  .fig > svg { min-width: 680px; }
+  .controls input[type=range] { width: 120px; }
+  h2 { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">RetroVega · engineering notes · November 2026</div>
+  <h1>Building a new DOS space sim in 640K</h1>
+  <ul class="lede">
+    <li>RetroVega is a brand-new 16-bit DOS space-combat game, written in 2026 and set in Vega Strike's Terran–Aera war.</li>
+    <li>It runs on real DOS and stock DOSBox, in the browser, compiled natively, and with up to three pilots sharing one flight.</li>
+    <li>These notes cover the engineering that made it fit: assembly where the cycles go, XMS as a blitter, a graphics card that exists only in our emulator, a lightfield of pre-rendered ships, and a memory layout another program can puppet.</li>
+    <li>Every number comes from measuring the game. Figures marked <b style="color:var(--accent)">LIVE</b> are interactive: drag, slide, click.</li>
+  </ul>
+  <nav class="toc" aria-label="Contents">
+    <a href="#target">1 · The machine we target</a>
+    <a href="#cycles">2 · Counting instructions</a>
+    <a href="#memory">3 · Every byte has an address</a>
+    <a href="#xms">4 · XMS, the blitter DOS never had</a>
+    <a href="#lightfield">5 · A lightfield of ships</a>
+    <a href="#paths">6 · Copy, scale, turn</a>
+    <a href="#gx">7 · 2dfx-Voonew, the imaginary card</a>
+    <a href="#asm">8 · Bolts, flames, fire</a>
+    <a href="#rocks">9 · Asteroid fields</a>
+    <a href="#abi">10 · Built to be puppeted</a>
+    <a href="#web">11 · The browser</a>
+    <a href="#builds">12 · One source, many machines</a>
+    <a href="#tests">13 · Testing for sameness</a>
+    <a href="#more">14 · Odds and ends</a>
+  </nav>
+</header>
+
+<figure class="hero">
+  <img src="img/hero-flight.jpg" width="1280" height="800" alt="RetroVega cockpit view: a Convolution targeted inside a diamond bracket, an Aera fighter close by, a wingman's helmet on the left screen">
+  <figcaption>A recorded flight of Rigel 2: the Convolution targeted, Wildcard on the comm link.</figcaption>
+</figure>
+
+<!-- ============================================================ 1 -->
+<h2 id="target"><span class="num">01</span>The machine we target</h2>
+<ul>
+  <li>16-bit real mode, 386 instructions allowed. The C is Open Watcom 2 in the medium model (far code, near data, SS = DS); the hot loops are NASM.</li>
+  <li>640×400 in 256 colours (VESA mode 100h), drawn at 30 frames a second.</li>
+  <li>The flight's logic keeps the 1990 game's pace: the old game ran at 15 fps on an average machine of its day, so each of its frames is two of our steps.</li>
+  <li>Memory:
+    <ul>
+      <li>640 KB of conventional memory, of which DOSBox leaves a program 640,512 bytes.</li>
+      <li>Up to 62 MB of XMS (DOSBox's <code>memsize=63</code>, its most).</li>
+      <li>DOSBox's 128 KB of upper memory.</li>
+    </ul>
+  </li>
+  <li>Time: in DOSBox an instruction costs about one emulated cycle, whatever it is. The browser page runs 50,000 cycles a millisecond, so a 30 fps frame is about 1.67 million instructions.</li>
+</ul>
+<div class="tiles">
+  <div class="tile"><b>7,760 B</b><span>conventional memory left for DOS while the game runs</span></div>
+  <div class="tile"><b>62 MB</b><span>XMS for pictures, songs and sounds</span></div>
+  <div class="tile"><b>1.67 M</b><span>instructions in a 30 fps frame in the page</span></div>
+  <div class="tile"><b>901</b><span>pre-rendered views per fighter (the 1990 game had 37)</span></div>
+  <div class="tile"><b>0</b><span>calls to malloc in the game's EXE</span></div>
+  <div class="tile"><b>192 / 187</b><span>play tests passing on the host / in DOS, hashes equal</span></div>
+</div>
+<div class="shots">
+  <figure><img src="img/cockpits.png" alt="Eight cockpit art sets side by side" loading="lazy"><figcaption>The eight cockpits, each a set of overlays the panel code drives.</figcaption></figure>
+  <figure><img src="img/palette.png" alt="The flight palette: a 16 by 16 grid of colours" loading="lazy" class="pixel" style="max-width:300px"><figcaption>The flight palette: every ship, rock and flame is quantised to these 256.</figcaption></figure>
+</div>
+
+<!-- ============================================================ 2 -->
+<h2 id="cycles"><span class="num">02</span>Counting instructions, not nanoseconds</h2>
+<ul>
+  <li>DOSBox charges one cycle per instruction and one per <code>rep</code> iteration:
+    <ul>
+      <li><code>idiv</code> costs what <code>mov</code> costs;</li>
+      <li><code>rep movsd</code> moves 4 bytes a cycle and <code>rep stosb</code> fills one.</li>
+    </ul>
+  </li>
+  <li>So the rule is <i>fewer instructions</i>, not <i>cheaper instructions</i>. That is the opposite of tuning for a real 386.</li>
+  <li>Open Watcom's 16-bit code calls a runtime helper (<code>__I4M</code>, <code>__I4D</code>, <code>__U4M</code>, <code>__U4D</code>: about 40 cycles) for every 32-bit multiply and divide, even <code>(int32_t)a * b</code> of two 16-bit values.</li>
+  <li>So 32-bit maths repeated over thousands of elements moved to NASM, using 32-bit registers in real mode.</li>
+  <li>Every flight logs where its frames went (<code>flight: ms a frame: the plan; the picture (exact, sets); the whole frame</code>), and the test build reads <code>RDTSC</code>, which in DOSBox counts emulated cycles.</li>
+</ul>
+
+<figure class="fig" id="fig-budget">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">Spend a frame</span><span>the laser engine's measured cost model</span></div>
+  <div class="controls">
+    <label>exact near ships <input type="range" id="bB" min="0" max="4" value="2"><output id="bBo"></output></label>
+    <label>far ships <input type="range" id="bF" min="0" max="40" value="16"><output id="bFo"></output></label>
+    <label>near bolts <input type="range" id="bn" min="0" max="48" value="12"><output id="bno"></output></label>
+    <label>far bolts <input type="range" id="bN" min="0" max="2000" step="10" value="200"><output id="bNo"></output></label>
+  </div>
+  <svg id="budgetSvg" viewBox="0 0 900 170" role="img" aria-label="Stacked bar of a frame's cost against the 33 ms budget"></svg>
+  <figcaption>
+    <ul>
+      <li>Frame ≈ 9 + 7.8·exact + 0.6·far ships + 0.04·near bolts + 0.009·far bolts ms at 40,000 cycles (measured 2026-10-21); the page's 50,000 cycles take 0.8 of that.</li>
+      <li>The far ships' cost was mostly placing them in C, three times a frame (the cockpit view draws in three bands).</li>
+    </ul>
+  </figcaption>
+</figure>
+
+<figure class="fig" id="fig-wins">
+  <div class="tag"><span class="title">Where assembly (and better data) paid</span><span>before → after</span></div>
+  <svg id="winsSvg" viewBox="0 0 900 330" role="img" aria-label="Bar chart of before and after costs for six optimisations"></svg>
+</figure>
+
+<!-- ============================================================ 3 -->
+<h2 id="memory"><span class="num">03</span>Conventional memory: every byte has an address</h2>
+<ul>
+  <li>The image is the budget. RV.EXE loads as 632,752 bytes; DOSBox gives a program 640,512. What is left (7,760 bytes today) is all DOS has while the game runs.</li>
+  <li><code>build.sh</code> prints the headroom on every build, warns under 8 KB and refuses under 2 KB.</li>
+  <li>The game has no heap. Every buffer is a fixed array with a guard behind it and an address in <code>RV.MAP</code>, and the build refuses an RV.EXE that links <code>_fmalloc</code>:
+    <ul>
+      <li><code>MEM_ARRAY(LzBolt, g_b_arr, SHOTS_MAX)</code> declares the array at file level;</li>
+      <li><code>MEM_TAKE</code> clears it, sets the guard and enters it on the ledger;</li>
+      <li><code>MEM_GIVE</code> hands it back.</li>
+    </ul>
+  </li>
+  <li>The bug behind that rule: the far heap kept what a flight freed, so from a session's second flight the bolt pool found no room, and lasers still hit but were never drawn.</li>
+  <li>The ledger runs before and after each flight. It records:
+    <ul>
+      <li>the arrays out, DOS's free memory, the near heap, XMS and the open files;</li>
+      <li>a hash of the interrupt table, where a write through a null far pointer lands;</li>
+      <li>every array's guard.</li>
+    </ul>
+  </li>
+  <li>The watch, once a frame: nothing takes conventional memory once the game runs (spawns and asteroid fields go to XMS), so any fall in DOS's free memory is logged as <code>LEAK:</code>. All 40 missions fly with none.</li>
+  <li>Every list has a cap its writer enforces, assembly included.</li>
+</ul>
+
+<figure class="fig" id="fig-memmap">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">The first megabyte, and what RV.EXE does with it</span><span>hover a block · click to zoom</span></div>
+  <div class="controls"><span class="seg" id="mmZoom"><button aria-pressed="true" data-z="mb">1 MB address space</button><button aria-pressed="false" data-z="exe">RV.EXE's 618 KB</button><button aria-pressed="false" data-z="dg">DGROUP's 50 KB</button></span></div>
+  <svg id="memSvg" viewBox="0 0 900 250" role="img" aria-label="Memory map"></svg>
+  <figcaption>From the link map (<code>RV.MAP</code>, 2026-11-08). Far data is the fixed arrays: the drawing scratch, the sprite tables, the rocks', the music's.</figcaption>
+</figure>
+
+<figure class="fig" id="fig-headroom">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">The tide line</span><span>conventional memory left for DOS, as build.sh printed it · hover the steps</span></div>
+  <svg id="headSvg" viewBox="0 0 900 300" role="img" aria-label="Step chart of memory headroom from 1 to 8 November 2026"></svg>
+</figure>
+
+<h3>Where the bytes came back from</h3>
+<ul>
+  <li><b>Log formats left the program.</b> <code>tools/logfmt.py</code> compiles the engine from copies with each log-only format string replaced by a token (<code>\001N</code>). The texts ride after the EXE's image behind an <code>RVLOGEND</code> trailer and are read into XMS at start.</li>
+  <li><b>A segment per function.</b> <code>-zm</code> plus the linker's <code>eliminate</code> dropped the dead ones: 5,040 bytes.</li>
+  <li><b>Three programs from one source.</b>
+    <ul>
+      <li>RV.EXE is the game.</li>
+      <li>RVT.EXE adds the demos, benchmarks and self-tests.</li>
+      <li>RVP.EXE adds the play tests and the assembly's C twins.</li>
+      <li>The game's own EXE got 56 KB smaller on disk and gained 48 KB in flight.</li>
+    </ul>
+  </li>
+  <li><b>The title font</b> lives in XMS, one glyph fetched per draw.</li>
+  <li><b>The stack</b> is 4 KB, painted at start. Each flight's end logs the deepest use seen (1.7 KB).</li>
+  <li><b>Upper memory</b> holds exactly two 64 KB buffers: the band buffer the screen is drawn in, and the dense slab the exact ship draw turns pictures from.</li>
+  <li><b>Rooms shared by users who never meet:</b>
+    <ul>
+      <li>the chalkboard's hand and the flight's silhouettes;</li>
+      <li>the music's start-up reads, which borrow the empty scratch and font arrays.</li>
+    </ul>
+  </li>
+  <li><b>DGROUP</b> (64 KB of near data, shared with the stack) was full for weeks, so new tables go <code>__far</code>. The traps:
+    <ul>
+      <li>Watcom's <code>__far</code> binds to one declarator;</li>
+      <li>string literals always land in DGROUP in the medium model;</li>
+      <li>under ~200 bytes free, the C runtime cannot open files at all.</li>
+    </ul>
+  </li>
+</ul>
+
+<!-- ============================================================ 4 -->
+<h2 id="xms"><span class="num">04</span>XMS: the blitter DOS never had</h2>
+<ul>
+  <li>The first plan was EMS 4.0. XMS won, because DOSBox carries out an XMS move (function 0Bh) as one host-side memory copy, video memory included.</li>
+  <li>Flipping a whole 64 KB bank of the screen costs a few emulated instructions. To the emulated CPU, copying is nearly free.</li>
+  <li>So the engine trades memory for speed everywhere: render it once, keep it in XMS, copy it.</li>
+  <li><b>The band buffer:</b> the screen is drawn in runs of up to 100 dirty rows into one 64,000-byte buffer. Each run is drawn whole, back to front, then flipped by an XMS move, so nothing older is needed.</li>
+  <li><b>Rocks:</b> each row of a big rock's picture is stored as runs, so a row lands in the band with one XMS move. That costs 1.1 µs at any width, against 1.9–2.2 µs for a CPU copy.</li>
+  <li><b>Five levels, a stack:</b> resident, base, room, mission, hazard. They are allocated and freed in nesting order; a level out of order stops the game. At a mission's end every resource goes back to zero.</li>
+</ul>
+
+<figure class="fig" id="fig-xms">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">A session in XMS</span><span>sizes are approximate · press play or step</span></div>
+  <div class="controls"><button class="small" id="xmsPlay">❚❚ pause</button><span class="seg" id="xmsSteps"></span></div>
+  <svg id="xmsSvg" viewBox="0 0 900 270" role="img" aria-label="XMS levels stacking up through a session"></svg>
+</figure>
+
+<figure class="fig" id="fig-band">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">The band buffer</span><span>the cockpit view drawn as three runs of rows, each flipped by one XMS move</span></div>
+  <canvas id="bandCv" width="900" height="300" aria-label="Animation of the screen drawn band by band"></canvas>
+</figure>
+
+<!-- ============================================================ 5 -->
+<h2 id="lightfield"><span class="num">05</span>A lightfield: 3D ships drawn from pictures</h2>
+<ul>
+  <li>Nothing in flight is polygons. Every ship is a set of pictures rendered offline from Vega Strike's meshes (moderngl on Mesa EGL), one for each point of a lattice on a sphere around it.</li>
+  <li>The lattice:
+    <ul>
+      <li>The 1990 game used 37 views, 30° apart.</li>
+      <li>RetroVega's fighters use 901, 6° apart (29 bands × 31 headings).</li>
+      <li>The other ships use 145, 15° apart.</li>
+    </ul>
+  </li>
+  <li>Only headings 0–180° are stored. The other side is the same picture mirrored, drawn by a reversed row copy at no extra cost.</li>
+  <li><code>lf_place</code> does the work:
+    <ul>
+      <li>in: the ship's position less the camera's, plus both bases (front, right, up);</li>
+      <li>out: the screen point, the view, the turn on screen (1,024 a circle) and the size.</li>
+    </ul>
+  </li>
+  <li>Conventions fixed once: a left-handed frame like the screen (x right, y up, z into it), and full size at 2,500 km.</li>
+</ul>
+
+<figure class="fig" id="fig-lf">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">Fly the lightfield</span><span>the Schroedinger's 145 real views · drag the ship to turn it</span></div>
+  <div class="two">
+    <div>
+      <canvas id="lfCv" class="space" width="560" height="400" style="width:100%;touch-action:none;cursor:grab" aria-label="The Schroedinger drawn from its nearest pre-rendered view"></canvas>
+      <div class="controls">
+        <span class="seg" id="lfLat"><button aria-pressed="true" data-v="15">15° · 145 views</button><button aria-pressed="false" data-v="30">30° · 37 views (1990)</button></span>
+        <span class="seg" id="lfDraw"><button aria-pressed="true" data-v="1">pixel by pixel (card)</button><button aria-pressed="false" data-v="2">2×2 blocks</button><button aria-pressed="false" data-v="4">4×4 (capitals)</button></span>
+      </div>
+      <div class="controls">
+        <label>roll <input type="range" id="lfRoll" min="-180" max="180" value="0"><output id="lfRollO"></output></label>
+        <label>distance <input type="range" id="lfDist" min="0" max="100" value="35"><output id="lfDistO"></output></label>
+        <button class="small" id="lfAuto">❚❚ stop tumbling</button>
+      </div>
+    </div>
+    <div>
+      <svg id="lfMap" viewBox="0 0 360 230" role="img" aria-label="The lattice of views by heading and elevation, with the camera's direction"></svg>
+      <div class="readout" id="lfRead" style="margin-top:8px"></div>
+      <img id="lfAtlas" src="img/views-schroedinger.png" alt="" hidden>
+    </div>
+  </div>
+  <figcaption>
+    <ul>
+      <li>The map shows the camera's direction as seen from the ship: dots are stored views, rings are mirrored ones.</li>
+      <li>Watch the picture jump as the direction crosses into another view's cell. Those jumps are the "pops" the lattice density buys down.</li>
+    </ul>
+  </figcaption>
+</figure>
+
+<ul>
+  <li>The pops were studied frame by frame. The test scene's Gawain rolled at 68° a second about 35° off the line of sight, so it crossed a 15° cell every ~7 frames.</li>
+  <li>A blind test of 10° against 15° came back "almost as good… not worth optimizing". The fighters went to 6° later, once XMS allowed it.</li>
+  <li>Tried and dropped:
+    <ul>
+      <li>a polygon renderer ("not the style");</li>
+      <li>a dithered blend at cell crossings;</li>
+      <li>5° silhouettes over coarse paint.</li>
+    </ul>
+  </li>
+</ul>
+<figure>
+  <img src="img/packed.png" alt="Every ship type's packed view in the game palette" loading="lazy" style="width:100%;border:1px solid var(--line);border-radius:4px">
+  <figcaption>The packed views of every type, in the flight palette, as the engine stores them.</figcaption>
+</figure>
+
+<!-- ============================================================ 6 -->
+<h2 id="paths"><span class="num">06</span>Turning pictures: copy, scale, turn</h2>
+<h3>The key problem: rotation and scale</h3>
+<ul>
+  <li>The lightfield answers one question: which picture. Two more are left, and both are continuous:
+    <ul>
+      <li><b>roll:</b> how the picture is turned on screen, any angle as the ship or the player banks;</li>
+      <li><b>scale:</b> how big it is, any size as the distance changes.</li>
+    </ul>
+  </li>
+  <li>A plain copy can do neither. The picture has to be <i>resampled</i>: for every pixel on screen, step back through the turn and the scale to the source pixel that lands there (inverse mapping).</li>
+  <li>That costs per pixel, and pixels grow with the square of nearness. A ship at half the distance has four times the pixels, and the nearest ships matter most to the player.</li>
+  <li>The answers, in the order they were tried:
+    <ul>
+      <li>pre-render the sizes and turns and copy them (fast, but steps show up close, and megabytes per type);</li>
+      <li>turn the one or two nearest exactly;</li>
+      <li>turn every ship exactly at 2×2 blocks, a quarter of the samples, with half the rows copied;</li>
+      <li>hand rotation and scale to the card: every pixel, any angle, any size, no emulated time (section 7).</li>
+    </ul>
+  </li>
+</ul>
+<figure class="fig" id="fig-turncost">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">What one turned ship costs</span><span>the Schroedinger, as it comes nearer · hover</span></div>
+  <svg id="turnSvg" viewBox="0 0 900 300" role="img" aria-label="Share of a 30 fps frame one ship costs against its distance, by drawing path"></svg>
+  <figcaption>A model from the measured kernels: about 16 cycles a pixel turned, 4.6 at 2×2 blocks with half the rows copied, 1.7 copied unturned, and about 60 instructions to ask the card. The pixel count is the real view's, scaled. The page has 1.67 million cycles a frame.</figcaption>
+</figure>
+<ul>
+  <li>A copy is run-length spans moved with <code>rep movsd</code>: 1.7 cycles a pixel. Scaling or turning one by inverse mapping costs nine times that, even in assembly.</li>
+  <li>So a picture drawn often must be a copy, and sizes and turns are rendered once:
+    <ul>
+      <li>The design: the views are the <i>compressed</i> form of a ship.</li>
+      <li>A decompressor renders 13 sizes (each 0.84 of the last), and turns in 11.25° steps from half size down, into sets the engine copies straight into XMS.</li>
+    </ul>
+  </li>
+  <li><b>The mirror insight:</b>
+    <ul>
+      <li>an upside-down copy is a turn of 180°−θ plus a mirrored heading;</li>
+      <li>a mirrored copy is a turn of −θ;</li>
+      <li>so only 0–90° of turn is stored: 5 of 16 steps.</li>
+    </ul>
+  </li>
+  <li>The decompressor runs on the host, not in the emulator:
+    <ul>
+      <li><code>tools/rvsprites.c</code> makes a set in 40 ms;</li>
+      <li><code>web/rvsprites.js</code> does it in the page, in a Web Worker;</li>
+      <li>a check compares every set the two make: byte-identical.</li>
+    </ul>
+  </li>
+  <li><b>The block mode</b> (since 2026-10-23):
+    <ul>
+      <li>every ship is turned exactly each frame at 2×2-pixel blocks, capital ships at 4×4;</li>
+      <li>each turn starts from a dense copy kept in the upper-memory slab;</li>
+      <li>an eight-entry XMS cache keeps more than two turned ships from re-expanding every frame.</li>
+    </ul>
+  </li>
+  <li>Dropped rows get exact edges: a ship is convex enough that one left and right edge a row hides the blocks' stair steps.</li>
+</ul>
+<figure class="fig" id="fig-paths">
+  <div class="tag"><span class="title">Cycles a pixel, by path</span><span>the Nicander's 82×121 view at 40,000 cycles</span></div>
+  <svg id="pathSvg" viewBox="0 0 900 190" role="img" aria-label="Cycles per pixel: copy 1.7, scaled 16 in asm and 21 in C, turned 16 in asm and 43 in C"></svg>
+</figure>
+
+<!-- ============================================================ 7 -->
+<h2 id="gx"><span class="num">07</span>2dfx-Voonew: a graphics card that exists only in our emulator</h2>
+<ul>
+  <li><b>2dfx-Voonew</b> (invented 2026-11-01) is an optional "accelerator" that draws a ship turned and scaled at full resolution, from pictures it fetches by itself. Its interrupt interface is called RVGX.</li>
+  <li>It takes over exactly the two jobs DOS can least afford, <b>rotation and scaling</b>. The game says how much (roll, scale, mirror) and where (x, y, frame buffer, stride, clip rows and columns). The card does the inverse mapping for every pixel, in host code.</li>
+  <li>It must be harmless where it does not exist, on real DOS and stock DOSBox ("spoiler: this hardware is not installed except in DOSBox"):
+    <ul>
+      <li>It lives on <code>INT 2Fh</code>, DOS's multiplex interrupt, where every DOS since 3.0 returns an unclaimed function with AL as it was: 0.</li>
+      <li>The handshake: <code>AX=E700h, BX='RV', CX='GX'</code> → <code>AL=FFh, BX='gx'</code>, and CH.CL is the version. Anything else means no card.</li>
+    </ul>
+  </li>
+  <li>The interface is one 128-byte block at a fixed address, told to the card once. A draw is: fill the block, <code>int 2Fh</code>.</li>
+  <li>The result word is set to −100 before the call, so a card that did nothing counts as a failure. Any negative result means the game draws its own blocks that frame.</li>
+  <li>Slots, not buffers: 256 slots, each named from a loop with the name on the stack, and slot = ship type number. DOS keeps no list and no pixel of it; the bitmaps live in the browser.</li>
+  <li>The point is memory more than speed. A mission's full-size views are tens of megabytes, and capital ships are drawn at full resolution "no matter what".</li>
+  <li>A draw takes no emulated time. The card writes straight into emulated memory with the game's own <code>lightfield.c</code> code, so a ship lands where the native build puts it: the same box in 142 of 142 compared frames.</li>
+  <li>In wasm it draws about 480 million pixels a second, some 1,600 full-size fighters in a 33 ms frame.</li>
+  <li>The <code>`</code> key flips card and blocks at any moment, "like StarCraft Remastered".</li>
+</ul>
+
+<figure class="fig" id="fig-gxcmp">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">Card on, card off</span><span>real screenshots, three frames apart · drag the line</span></div>
+  <div class="slider-cmp" id="gxCmp">
+    <img src="img/gx-blocks.png" width="640" height="400" alt="Cockpit view with the ship drawn as 2 by 2 blocks by the game alone">
+    <div class="over"><img src="img/gx-card.png" alt="The same view with the ship drawn pixel by pixel by the accelerator"></div>
+    <div class="bar"></div><div class="knob">⇔</div>
+    <span class="lab" style="left:8px">2DFX-VOONEW</span><span class="lab" style="right:8px">DOS ALONE · 2×2 BLOCKS</span>
+  </div>
+  <div class="controls" style="margin-top:12px">
+    <button class="small" id="gxFlip">` flip</button><span id="gxFlipLab" class="readout" style="padding:3px 8px">card</span>
+    <label><input type="checkbox" id="gxAutoFlip" checked> flip by itself</label>
+  </div>
+  <img id="gxZoom" class="pixel space" src="img/gx-card-zoom.png" width="576" height="360" alt="The ship enlarged six times" style="width:min(576px,100%);height:auto;border-radius:5px">
+  <figcaption>Six times enlarged: the same ship as the card draws it and as the game's own block mode does. <code>tests/gxzoom.txt</code> in the test build.</figcaption>
+</figure>
+
+<h3>Who draws the rows</h3>
+<ul>
+  <li><b>Without the card, DOS turns and scales every ship itself.</b> It starts from a dense copy of a half-size picture, kept in upper memory or fetched back from an XMS cache. Then:
+    <ul>
+      <li>every other row is <i>drawn</i>: the NASM kernel takes one sample per 2×1 block, by inverse mapping;</li>
+      <li>each row between is <i>copied</i> from the row above with <code>rep movsd</code>;</li>
+      <li>the copied row's own left and right edges are probed and sampled, so the outline stays exact: a ship is convex enough for one edge a side.</li>
+    </ul>
+  </li>
+  <li><b>With the card, DOS does none of that.</b> The game fills the block and makes one <code>int 2Fh</code> (AX=E720h). The block holds:
+    <ul>
+      <li>which picture: slot, view, mirror;</li>
+      <li>where and how: x, y, scale, roll;</li>
+      <li>the frame buffer's row pointer and stride;</li>
+      <li>the rows and columns it may write.</li>
+    </ul>
+    The card draws every pixel at full resolution, straight into the band buffer, outside the emulated CPU.
+  </li>
+  <li><b>The fallback is the same frame.</b> A negative result (no picture yet, none to be had, memory it can't write) sends the draw down the DOS path at once. Nothing waits, and no ship is ever missing.</li>
+</ul>
+
+<figure class="fig" id="fig-rows">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">One ship, row by row</span><span>a real Schroedinger view · pick who draws it</span></div>
+  <div class="controls">
+    <span class="seg" id="rowsMode"><button aria-pressed="true" data-v="dos">DOS alone</button><button aria-pressed="false" data-v="card">2dfx-Voonew</button><button aria-pressed="false" data-v="fall">2dfx-Voonew, still loading</button></span>
+    <button class="small" id="rowsReplay">↻ replay</button>
+    <label><input type="checkbox" id="rowsTint" checked> tint copied rows and sampled edges</label>
+  </div>
+  <div class="controls">
+    <label>roll <input type="range" id="rowsRoll" min="-180" max="180" value="28"><output id="rowsRollO">28°</output></label>
+    <label>scale <input type="range" id="rowsScale" min="30" max="80" value="62"><output id="rowsScaleO">0.62</output></label>
+    <span style="color:var(--muted)">moving either shows the finished picture; replay to watch it drawn</span>
+  </div>
+  <div class="two">
+    <canvas id="rowsCv" class="pixel space" width="546" height="420" style="width:100%" aria-label="A ship drawn into a pixel grid row by row, or all at once by the card"></canvas>
+    <div>
+      <div class="tablewrap"><table class="fields" id="rowsBlock"><thead><tr><th>block field</th><th>value</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="readout" id="rowsRead" style="margin-top:8px"></div>
+    </div>
+  </div>
+  <div class="legend"><span><i style="background:#5b7bd5"></i>drawn row: one sample a 2×1 block</span><span><i style="background:#b48cff"></i>copied from the row above (rep movsd)</span><span><i style="background:#f0c04a"></i>edge pixels sampled on a copied row</span></div>
+  <pre class="readout" style="margin-top:10px;overflow-x:auto">/* ships.c, ships_draw_exact(): the card first, the game's own blocks if it says no */
+if (s-&gt;factor &gt; 1 &amp;&amp; gx_on()) {
+    int mir, src = stored_view(s, p.view, &amp;mir);
+    if (gx_draw(s-&gt;type, src, mir, p.sx, p.sy, scale256, p.roll,
+                y0, y1, xa, xb, ext, ext_y0, ext_rows) &gt;= 0)
+        return 1;                              <span class="d">/* drawn by the card: every pixel */</span>
+}
+<span class="d">/* result &lt; 0: the same frame, DOS turns it: dense copy, drawn rows, copied rows */</span>
+draw_turned_at(s, set_i, k, p.view, p.sx, p.sy, scale, p.roll, 4 /* 2x2 */, y0, y1, xa, xb, ext, ...);</pre>
+  <figcaption>
+    <ul>
+      <li>The instruction counts are a model built from the measured kernels (about 18 a sample, a quarter a byte copied). The card's draw takes no emulated time at all.</li>
+      <li>The values in the block are this picture's: scale 159 is 0.62 of the stored size, and roll 80 is 28° of a 1,024-step turn.</li>
+    </ul>
+  </figcaption>
+</figure>
+
+<figure class="fig" id="fig-gxseq">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">One ship through the card</span><span>animated · the picture arrives while the game flies on</span></div>
+  <svg id="gxSeq" viewBox="0 0 900 400" role="img" aria-label="Sequence: install check, attach block, name slot, fetch, draw falling back, draw by the card"></svg>
+  <div class="controls"><button class="small" id="gxSeqPlay">❚❚ pause</button><button class="small" id="gxSeqStep">step ›</button></div>
+</figure>
+
+<figure class="fig" id="fig-gxblock">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">The 128-byte block</span><span>hover a byte</span></div>
+  <svg id="gxBlock" viewBox="0 0 900 250" role="img" aria-label="Byte map of the accelerator's parameter block"></svg>
+  <figcaption>The second half (bytes 64–127) carries a wreck's debris cloud: function <code>E730h</code>, cut from the art's damage stamps. It is card-only: DOS-only players never see it, and it is off by default (EXTRA FX).</figcaption>
+</figure>
+
+<!-- ============================================================ 8 -->
+<h2 id="asm"><span class="num">08</span>Bolts, flames, fire: the hot loops</h2>
+<h3>Laser bolts</h3>
+<ul>
+  <li>Bolts are capsules: square backs were a nonstarter, the ends must be round.</li>
+  <li>A just-fired bolt is up to 16 px wide. Under 0.75 px of radius it becomes a line, about three times cheaper.</li>
+  <li><code>lasers.asm</code> places, sets up and draws them row by row, bit-exact with <code>lasers.c</code>. A near bolt's set-up took 87 µs in C (Watcom's 64-bit helpers) and takes 13.8 µs in assembly.</li>
+  <li>A square-root table shared with the AI (1,025 bytes) made capsules the cheapest shape, once counted as shared.</li>
+  <li>On the frame it is fired, a bolt is drawn as a streak from the gun. It starts above your head, not halfway to the crosshair.</li>
+  <li>About 1,100 far bolts fit in a 30 fps frame in the page.</li>
+</ul>
+<figure class="fig" id="fig-bolt">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">Rasterising a capsule</span><span>drag either end · the bolt flies off by itself until you touch it</span></div>
+  <canvas id="boltCv" class="pixel space" width="720" height="300" style="width:100%;touch-action:none;cursor:crosshair" aria-label="A capsule bolt drawn on a pixel grid, one span per row per colour"></canvas>
+  <div class="controls">
+    <label>radius <input type="range" id="boltR" min="0.3" max="8" step="0.05" value="4"><output id="boltRo"></output></label>
+    <label><input type="checkbox" id="boltSpans" checked> show row spans</label>
+    <button class="small" id="boltFly">▶ fly away</button>
+  </div>
+  <div class="readout" id="boltRead"></div>
+</figure>
+
+<h3>Engine flames</h3>
+<ul>
+  <li>3,114 noisy flame sprites are baked once at game start: 1.36 MB of XMS, 1.9 s at 40,000 cycles.</li>
+  <li>Each frame mixes two baked frames row by row, so the flame flickers without a shader. That costs 0.5–0.9 ms a frame.</li>
+  <li>They sit on the nozzles of the picture <i>as drawn</i> (the same view, turn and size as the sprite). The worst error is 0.512 px, checked by <code>/flametest</code>. Flames that looked "bent left or right" were a bug worth chasing: a flame is a key clue to a ship's heading.</li>
+</ul>
+<figure class="fig" id="fig-flame">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">Two baked frames, mixed by rows</span></div>
+  <canvas id="flameCv" class="pixel space" width="720" height="200" style="width:100%" aria-label="Two flame frames and their row-mixed result"></canvas>
+</figure>
+
+<h3>Fireballs</h3>
+<ul>
+  <li>The report: "RetroVega really stutters when there's an explosion on screen."</li>
+  <li>The cause was the fireball's per-pixel scaling: 680K cycles for one fighter's blast at 500 km, 900K with its tables and sparks.</li>
+  <li>Now a big fireball is drawn as runs (<code>rep stosb</code>), and a row that repeats the one above is copied with <code>movsd</code>. That brought it to 180K cycles, and the whole picture from 27 ms to 17 ms.</li>
+</ul>
+<figure class="fig" id="fig-fire">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">Per pixel, or runs</span><span>a 16×16 cel scaled up · instruction counts are a model</span></div>
+  <canvas id="fireCv" class="pixel space" width="900" height="345" style="width:100%" aria-label="A fireball scaled per pixel versus filled as runs"></canvas>
+  <div class="controls"><label>size on screen <input type="range" id="fireN" min="16" max="240" value="120"><output id="fireNo"></output></label><button class="small" id="fireGrow">▶ grow</button></div>
+  <div class="readout" id="fireRead"></div>
+</figure>
+
+<h3>Rules for the assembly</h3>
+<ul>
+  <li>Every assembly routine has a C twin (<code>src/twins.c</code>):
+    <ul>
+      <li><code>RVP.EXE /twins</code> and a host test must agree on every case;</li>
+      <li>each flight starts with a self-test (<code>lightfield: asm kernels agree with the C ones</code>);</li>
+      <li>the native build runs the twins.</li>
+    </ul>
+  </li>
+  <li>Traps met on the way:
+    <ul>
+      <li>an assembly local below SP gets clobbered by the 240 Hz timer interrupt;</li>
+      <li><code>[bp+bx]</code> is not an addressing mode;</li>
+      <li><code>idiv</code> traps where C wraps, so a 64/32 divide is done in two steps;</li>
+      <li>once, <code>-ox</code> miscompiled an if/else: read <code>wdis</code> when C does the impossible.</li>
+    </ul>
+  </li>
+</ul>
+<figure>
+  <img src="img/balls.png" alt="Sheets of spherical projectile sprites at every size" loading="lazy" class="pixel" style="max-width:260px;border:1px solid var(--line);border-radius:4px;background:#000">
+  <figcaption>The "balls" (plasma, fire, star, discharge) at every diameter from 1 to 32 px: small ones copied, big ones fetched from XMS.</figcaption>
+</figure>
+
+<!-- ============================================================ 9 -->
+<h2 id="rocks"><span class="num">09</span>Asteroid fields: the old game's rules, measured</h2>
+<ul>
+  <li>Rocks are not ship slots. Each machine makes its own, as the 1990 game did, so a field costs no network traffic.</li>
+  <li>The rules were measured in the 1990 game, in the same emulator:
+    <ul>
+      <li>rocks come only from a cone ahead, about 3,050 km out;</li>
+      <li>most drift across your path at 100–160 kps;</li>
+      <li>1 in 9 is aimed at where you will be;</li>
+      <li>mines turn toward you every 20 of the old game's frames.</li>
+    </ul>
+  </li>
+  <li>The pictures:
+    <ul>
+      <li>raymarched signed-distance solids (scoria, slag, lava, pumice) with Worley pits and metal glints;</li>
+      <li>32 tumble frames and a 40-size ladder, stored as rows of runs for XMS moves.</li>
+    </ul>
+  </li>
+  <li>Three times the rocks cost nothing measurable: 17.6 against 17.5 ms a frame with five fighters about.</li>
+</ul>
+<figure class="fig" id="fig-rocks">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">The field, from above</span><span>the spawn cone, drifters, and the aimed one in nine</span></div>
+  <canvas id="rockCv" class="space" width="900" height="330" style="width:100%" aria-label="Top-down animation of rocks spawning ahead and drifting across"></canvas>
+  <div class="legend"><span><i style="background:#9aa3ad"></i>drifter</span><span><i style="background:#ef6a4a"></i>aimed at the lead point</span><span><i style="background:#f0c04a"></i>your fighter</span><span><i style="background:rgba(95,211,141,.5)"></i>spawn cone, 3,050 km</span></div>
+</figure>
+<div class="shots">
+  <figure><img src="img/rocks.png" alt="Sixteen rock sprites in four materials" loading="lazy"><figcaption>Four materials, rendered by raymarching.</figcaption></figure>
+  <figure><img src="img/flight-rocks.jpg" alt="Cockpit view with three rocks ahead and an Aera pilot on the comm link" loading="lazy"><figcaption>In flight: the field ahead, an Aera taunt on the right screen.</figcaption></figure>
+</div>
+
+<!-- ============================================================ 10 -->
+<h2 id="abi"><span class="num">10</span>Multiplayer: a game built to be puppeted</h2>
+<ul>
+  <li>The two-player layer was first written for the 1990 game. From inside DOSBox it reads and writes the game's memory and hooks its functions.</li>
+  <li>RetroVega was designed from its first day to be hooked the same way: the same names, units, strides and enums, fixed for good in one file, <code>abi/rvabi.def</code>.</li>
+  <li><code>tools/rvabi.py</code> generates three things from that file, and a stale emulator header fails the game's build:
+    <ul>
+      <li>the game's header (<code>rvhooks.h</code>);</li>
+      <li>its hook assembly (<code>rvhook.asm</code>);</li>
+      <li>the emulator's map (<code>wcnet_rv.h</code>).</li>
+    </ul>
+  </li>
+  <li>At load, the layer checks RVHOOK's magic, version and counts, and every word of the game's puppet directory. On any difference it only watches, and the page says the game and the emulator do not match.</li>
+  <li><b>Thunks:</b> every hookable function is called through a <code>jmp far</code> at RVHOOK:0x20 + 5n, so a hook sees every call. <b>Sites:</b> instructions of a hand-written flight loop at fixed offsets (<code>mainLoopTop</code> at 0x0400…).</li>
+  <li>The layer needs two things from the program's layout:
+    <ul>
+      <li>SS = DS, because it reads a far call's arguments at DS:SP+4 (Watcom's medium model gives that);</li>
+      <li>two scratch strings in DGROUP that it overwrites with code and runs with CS = DS. They still carry the old game's string names.</li>
+    </ul>
+  </li>
+</ul>
+
+<figure class="fig" id="fig-abi">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">The fixed block: DS:0000–73FF</span><span>pick a slot · click a field</span></div>
+  <svg id="abiStrip" viewBox="0 0 900 120" role="img" aria-label="The fixed block's sections along DS offsets"></svg>
+  <div class="controls"><label>slot <input type="range" id="abiSlot" min="0" max="127" value="5"><output id="abiSlotO"></output></label><span id="abiSlotRole" class="readout" style="padding:3px 8px"></span></div>
+  <div class="two">
+    <div class="tablewrap" style="max-height:330px;overflow-y:auto"><table class="fields" id="abiTable"><thead><tr><th>field (per slot)</th><th>bytes</th><th>array at</th><th>this slot at</th></tr></thead><tbody></tbody></table></div>
+    <div><svg id="abiArr" viewBox="0 0 340 330" role="img" aria-label="The selected field's 128 elements, with the chosen slot highlighted"></svg></div>
+  </div>
+  <figcaption>A struct of arrays, as the old game laid out its ships: 128 slots, each field its own array. <code>gPositionVector[5]</code> lives at <code>0x0B00 + 5×12 = 0x0B3C</code> on every machine, so the layer reads and writes it by address.</figcaption>
+</figure>
+
+<ul>
+  <li><b>Who flies a ship is a byte per slot.</b> <code>rvController</code> is 0 AI, 1 this machine's pilot, 2 puppet, 3 script or 4 frozen, and the flag <code>RV_FLAG_HUMAN</code> marks a ship a human flies elsewhere. The game's logic never asks whether it is host or guest.</li>
+  <li><b>The meeting point</b> is <code>missionStarting</code>: the host's compiled mission tables are written into the guest's fixed block, so both fly the same numbering.</li>
+  <li><b>Freewheel, then lockstep:</b> the first mission never waits. After a mission flown together, the pilots meet at the briefing door.</li>
+  <li><b>Asteroids</b> are each machine's own, and taunts cross through a byte per slot (<code>rvTaunt</code>). Up to three pilots fly together.</li>
+</ul>
+
+<figure class="fig" id="fig-puppet">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">Two machines, one flight</span><span>slot 0 is always this machine's own pilot</span></div>
+  <svg id="pupSvg" viewBox="0 0 900 330" role="img" aria-label="Host and guest slot tables with controllers and the traffic between them"></svg>
+  <div class="legend"><span><i style="background:var(--accent)"></i>PLAYER (this machine's pilot)</span><span><i style="background:var(--blue)"></i>AI (runs only on the host)</span><span><i style="background:var(--amber)"></i>PUPPET (moved by the layer)</span><span><i style="border:2px solid var(--red);background:none"></i>RV_FLAG_HUMAN</span></div>
+</figure>
+
+<!-- ============================================================ 11 -->
+<h2 id="web"><span class="num">11</span>The browser: making an emulator fast enough</h2>
+<ul>
+  <li>The emulator in the page ran three times slower than native. Asyncify had instrumented the whole CPU core, because a hook called from inside it could wait on the network.</li>
+  <li>The fix: hooks return a callback number, and the main loop runs it outside the core. The core left Asyncify and the page got 70% faster.</li>
+  <li>RetroVega idles politely with <code>sti; hlt</code> in the rooms and in the 30 fps wait, so the host CPU rests and the page reports its true load.</li>
+  <li>Ship pictures are fetched per flight, through a file:
+    <ul>
+      <li>the game writes <code>RVWANT.TXT</code> at the briefing;</li>
+      <li>the page polls it every 300 ms, fetches what it names and makes the set in a Web Worker;</li>
+      <li>the page writes the result into DOSBox's disk, which opens a file created after mounting by its name.</li>
+    </ul>
+  </li>
+  <li>The browser's Cache API keeps the downloads by SHA-1 and the made sets by SHA-1 plus recipe.</li>
+</ul>
+<figure class="fig" id="fig-want">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">A flight asks for its ships</span></div>
+  <svg id="wantSvg" viewBox="0 0 900 230" role="img" aria-label="Pipeline from the game's request file to sets in XMS"></svg>
+</figure>
+
+<!-- ============================================================ 12 -->
+<h2 id="builds"><span class="num">12</span>One source, many machines</h2>
+<figure class="fig" id="fig-builds">
+  <div class="tag"><span class="title">What src/ becomes</span></div>
+  <svg id="buildSvg" viewBox="0 0 900 300" role="img" aria-label="Diagram of the builds made from one source tree"></svg>
+</figure>
+<ul>
+  <li><b>/rv</b> is the game compiled for the browser, not an emulator. <code>host/hle.c</code> answers its DOS, BIOS, XMS, mouse and port calls, so <code>src/</code> builds nearly unchanged.</li>
+  <li>A far pointer there is the host pointer split into 16-bit halves, which is why that build is 32-bit.</li>
+  <li><b>The trap:</b> <code>int</code> is 16 bits on DOS and 32 on the host.
+    <ul>
+      <li>A width audit rewrites the game with 16-bit <code>int</code> under clang's truncation check.</li>
+      <li>That found the flame seed and a rocks pointer; the fix put the near data on a 64 KB boundary.</li>
+    </ul>
+  </li>
+  <li>Screenshots from DOSBox and from the native build of the same walk are compared pixel for pixel.</li>
+  <li><b>The desktop core</b> runs under a seccomp allowlist of 11 system calls and in a bubblewrap sandbox: no network, data read-only. Its build is reproducible, byte for byte.</li>
+  <li>Licences: in-game code is BSD (the OPL3 is ymfm); tools that never ship may be GPL.</li>
+</ul>
+
+<!-- ============================================================ 13 -->
+<h2 id="tests"><span class="num">13</span>Testing a game that must be the same everywhere</h2>
+<figure class="fig" id="fig-tests">
+  <div class="tag"><span class="live">● LIVE</span><span class="title">One test, two machines, one hash</span></div>
+  <svg id="testSvg" viewBox="0 0 900 260" role="img" aria-label="Play test built for host and DOS, world hashes compared"></svg>
+</figure>
+<ul>
+  <li><b>Play tests:</b> one C89 file, built for the host and into RVP.EXE. Each test ends with a hash of the world, <code>--dos</code> compares the two, and <code>--steps</code> finds the first step where DOS parts from the host. Today: 192 on the host, 187 in DOS.</li>
+  <li>A 16-bit wrap was caught only by the hash compare: both builds "passed" until their worlds were compared.</li>
+  <li><b>The quiet log:</b> a normal frame logs nothing, so a line means something. Notes print only with <code>/verbose</code>.</li>
+  <li><b>The freeze watch:</b> if the main loop is silent for 20 s, the music's interrupt writes the registers, the stack and the last second's interrupted addresses. <code>freezemap.py</code> names them from <code>RV.MAP</code>.</li>
+  <li><b>The monkey:</b> random clicks and keys under AddressSanitizer on a virtual clock, a campaign in seconds, across the 68 routes through the campaign.</li>
+  <li><b>The test pilot:</b> a bot flies the native game by keys for win-rate sweeps. At 9° of aim wander it won Rigel 2 about one time in three.</li>
+  <li><b>The 1990 game as the reference:</b> rigs fly the original in the same emulator to measure speeds, turn rates, hit rates and timers. The campaign's tree and points rule were decoded from its data.</li>
+  <li><b>The gate:</b> every change ships through one script that runs all of it (host, DOS, hashes, twins, quiet, two smokes) and then deploys.</li>
+</ul>
+
+<!-- ============================================================ 14 -->
+<h2 id="more"><span class="num">14</span>Odds and ends</h2>
+<ul>
+  <li><b>Music:</b>
+    <ul>
+      <li>our own MIDI sequencer on the OPL3 with our own CC0 instrument bank;</li>
+      <li>songs stream from XMS through two rings;</li>
+      <li>an exact integer tempo map, because Watcom's 64-bit division was too slow for 96K events;</li>
+      <li>loop markers, so battle songs chain on the bar line.</li>
+    </ul>
+  </li>
+  <li><b>Comm faces:</b> helmets raymarched as signed-distance models at 56×40, each row drawn twice for the "low-bandwidth encrypted link". The pilots' eyes come from their portraits.</li>
+  <li><b>The sky:</b> 128 pre-rendered turns per nebula, galaxy or planet. A half turn is free (flip both ways), so 64 are kept, or 33 for a mirror-symmetric thing. Nebulae are interlaced.</li>
+  <li><b>Sound:</b> every effect is a recipe in <code>tools/sfx.py</code>, rendered to <code>SFX.DAT</code>, so a sound is tuned by editing numbers.</li>
+  <li><b>Data:</b> the campaign, missions, ships and lines are text files (<code>missions.txt</code>, <code>ships.csv</code>) packed into <code>RVGAME.DAT</code> with versioned records.</li>
+</ul>
+<figure>
+  <img src="img/sky.png" alt="Nebulae, a galaxy and planets rendered for the sky" loading="lazy" style="max-width:520px;width:100%;border:1px solid var(--line);border-radius:4px">
+  <figcaption>The sky's far things: drawn at three times size, turned, box-filtered and dithered to the palette.</figcaption>
+</figure>
+
+<footer>
+  <ul>
+    <li>RetroVega's sources live on the <code>retrovega</code> branch of dosbox3d; the design notes are in <code>retrovega/docs/</code> (engine.md, gx.md, multiplayer.md, logic.md).</li>
+    <li>Ship meshes and textures: Vega Strike's assets.</li>
+  </ul>
+</footer>
+</div>
+<div class="tip" id="tip"></div>
+<script>
+'use strict';
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const NS = 'http://www.w3.org/2000/svg';
+const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function S(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function clear(e) { while (e.firstChild) e.removeChild(e.firstChild); }
+const fmt = n => n.toLocaleString('en-US');
+const tipEl = $('#tip');
+function tipShow(ev, html) {
+  tipEl.innerHTML = html; tipEl.style.display = 'block';
+  const x = Math.min(ev.clientX + 14, innerWidth - tipEl.offsetWidth - 8);
+  const y = Math.min(ev.clientY + 14, innerHeight - tipEl.offsetHeight - 8);
+  tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+}
+function tipHide() { tipEl.style.display = 'none'; }
+function hover(e, html) {
+  e.addEventListener('pointermove', ev => tipShow(ev, typeof html === 'function' ? html() : html));
+  e.addEventListener('pointerleave', tipHide);
+}
+/* run fn(dt, t) every animation frame while elm is on screen (nothing runs off screen) */
+function animate(elm, fn) {
+  let vis = false, raf = 0, last = 0;
+  function loop(t) {
+    raf = 0; if (!vis) { last = 0; return; }
+    const dt = last ? Math.min(0.1, (t - last) / 1000) : 0; last = t;
+    fn(dt, t / 1000);
+    raf = requestAnimationFrame(loop);
+  }
+  new IntersectionObserver(es => { vis = es[0].isIntersecting; if (vis && !raf) raf = requestAnimationFrame(loop); }).observe(elm);
+}
+function seg(id, onPick) {
+  const box = $(id);
+  box.addEventListener('click', ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    box.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+    onPick(b.dataset.v ?? b.dataset.z, b);
+  });
+}
+const COL = () => ({ fg: cssv('--fg'), muted: cssv('--muted'), line: cssv('--line'), accent: cssv('--accent'),
+  amber: cssv('--amber'), blue: cssv('--blue'), red: cssv('--red'), violet: cssv('--violet'), teal: cssv('--teal'),
+  panel: cssv('--panel'), card: cssv('--card'), bg: cssv('--bg') });
+const redrawers = [];
+const viewPx = { n: 0, cbs: [] };   // the Schroedinger view's opaque pixels at its stored size (set by the row figure)
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => redrawers.forEach(f => f()));
+function safe(name, f) { try { f(); } catch (e) { console.error(name, e); } }
+
+/* ---------- 2. the frame budget ---------- */
+safe('budget', () => {
+  const svg = $('#budgetSvg'), ids = ['bB', 'bF', 'bn', 'bN'];
+  function draw() {
+    const c = COL(), v = Object.fromEntries(ids.map(i => [i, +$('#' + i).value]));
+    ids.forEach(i => $('#' + i + 'o').textContent = fmt(v[i]));
+    const parts40 = [['the rest of the frame', 9, c.muted], ['exact near ships', 7.8 * v.bB, c.violet],
+      ['far ships', 0.6 * v.bF, c.blue], ['near bolts', 0.04 * v.bn, c.red], ['far bolts', 0.009 * v.bN, c.amber]];
+    const parts = parts40.map(([n, ms, col]) => [n, ms * 0.8, col]);
+    const total = parts.reduce((a, p) => a + p[1], 0), max = Math.max(50, total * 1.08);
+    const X = ms => 20 + ms / max * 860;
+    clear(svg);
+    let x = 0;
+    parts.forEach(([n, ms, col]) => {
+      if (ms <= 0) return;
+      const r = S('rect', { x: X(x), y: 54, width: Math.max(0.5, X(x + ms) - X(x)), height: 46, fill: col, rx: 2 }, svg);
+      hover(r, `${n}: ${ms.toFixed(1)} ms in the page (${(ms / 0.8).toFixed(1)} at 40,000 cycles)`);
+      if (X(x + ms) - X(x) > 70) S('text', { x: (X(x) + X(x + ms)) / 2, y: 82, 'text-anchor': 'middle', fill: '#fff', 'font-size': 12, 'pointer-events': 'none' }, svg, n);
+      x += ms;
+    });
+    S('line', { x1: X(33.3), x2: X(33.3), y1: 40, y2: 116, stroke: c.fg, 'stroke-width': 2, 'stroke-dasharray': '5 4' }, svg);
+    S('text', { x: X(33.3), y: 34, 'text-anchor': 'middle', fill: c.fg, 'font-size': 12 }, svg, '33.3 ms: 30 fps');
+    for (let t = 0; t <= max; t += 10) {
+      S('line', { x1: X(t), x2: X(t), y1: 104, y2: 110, stroke: c.muted }, svg);
+      S('text', { x: X(t), y: 124, 'text-anchor': 'middle', fill: c.muted, 'font-size': 11, class: 'mono' }, svg, t + ' ms');
+    }
+    const fps = Math.min(30, 1000 / total);
+    S('text', { x: 20, y: 158, fill: c.fg, 'font-size': 15, 'font-weight': 600 }, svg,
+      `In the page: ${total.toFixed(1)} ms a frame → ${fps.toFixed(fps < 30 ? 1 : 0)} fps` + (total > 33.3 ? '  (over budget)' : ''));
+  }
+  ids.forEach(i => $('#' + i).addEventListener('input', draw));
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 2. the wins ---------- */
+safe('wins', () => {
+  const svg = $('#winsSvg');
+  const rows = [
+    ['the stars placed, a frame', 15, 1.1, 'ms', 'C → NASM with 32-bit registers'],
+    ['a near bolt set up', 87, 13.8, 'µs', 'Watcom helpers → NASM'],
+    ['a fireball at 500 km, a frame', 900, 180, 'K cycles', 'per-pixel scaling → runs + copied rows'],
+    ['the picture with that fireball', 27, 17, 'ms', 'the same change, the whole frame'],
+    ['a turned sprite, a pixel', 43, 16, 'cycles', 'C kernel → NASM kernel'],
+    ['a big rock, a row', 2.0, 1.1, 'µs', 'CPU copy → one XMS move'],
+  ];
+  function draw() {
+    const c = COL(); clear(svg);
+    S('text', { x: 300, y: 18, fill: c.muted, 'font-size': 12 }, svg, 'each row against its own "before" (100%)');
+    rows.forEach(([name, a, b, u, how], i) => {
+      const y = 34 + i * 49, W = 560;
+      S('text', { x: 0, y: y + 14, fill: c.fg, 'font-size': 13.5, 'font-weight': 600 }, svg, name);
+      S('text', { x: 0, y: y + 32, fill: c.muted, 'font-size': 11.5 }, svg, how);
+      const r1 = S('rect', { x: 300, y: y + 2, width: W, height: 14, fill: c.line, rx: 2 }, svg);
+      const r2 = S('rect', { x: 300, y: y + 20, width: Math.max(2, W * b / a), height: 14, fill: c.accent, rx: 2 }, svg);
+      hover(r1, `before: ${a} ${u}`); hover(r2, `after: ${b} ${u}`);
+      S('text', { x: 306, y: y + 13, fill: c.fg, 'font-size': 11, class: 'mono', 'pointer-events': 'none' }, svg, `${a} ${u}`);
+      S('text', { x: 300 + Math.max(2, W * b / a) + 6, y: y + 31, fill: c.fg, 'font-size': 11, class: 'mono' }, svg, `${b} ${u}  ·  ${(a / b).toFixed(1)}× less`);
+    });
+  }
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 6. path costs ---------- */
+safe('paths', () => {
+  const svg = $('#pathSvg');
+  const rows = [['copy (rv_blit_row)', 1.7, null], ['scaled to 3/4', 16, 21], ['turned 45°, at 3/4', 16, 43]];
+  function draw() {
+    const c = COL(); clear(svg);
+    const X = v => 220 + v / 45 * 640;
+    rows.forEach(([n, asm, cc], i) => {
+      const y = 14 + i * 52;
+      S('text', { x: 0, y: y + 22, fill: c.fg, 'font-size': 13.5 }, svg, n);
+      if (cc) {
+        S('rect', { x: 220, y: y + 22, width: X(cc) - 220, height: 14, fill: c.line, rx: 2 }, svg);
+        S('text', { x: X(cc) + 6, y: y + 33, fill: c.muted, 'font-size': 11.5, class: 'mono' }, svg, `C: ${cc}`);
+      }
+      S('rect', { x: 220, y: y + 4, width: X(asm) - 220, height: 16, fill: i ? c.amber : c.accent, rx: 2 }, svg);
+      S('text', { x: X(asm) + 6, y: y + 16, fill: c.fg, 'font-size': 12, class: 'mono' }, svg, (cc ? 'NASM: ' : '') + asm + ' cycles/px');
+    });
+    S('text', { x: 220, y: 182, fill: c.muted, 'font-size': 11.5 }, svg, 'DOSBox: about one cycle an instruction, so a draw costs what its inner loop counts');
+  }
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 6. what one turned ship costs ---------- */
+safe('turncost', () => {
+  const svg = $('#turnSvg'), FRAME = 1.67e6, D0 = 4000, D1 = 350;
+  const P = [['DOS: every pixel turned and scaled', 16, 'red'], ['DOS: 2×2 blocks, rows copied (the game)', 4.6, 'amber'], ['a pre-rendered copy: no free roll', 1.7, 'blue'], ['2dfx-Voonew: one int 2Fh', 0, 'accent']];
+  let hx = -1;
+  const pix = d => viewPx.n * (2500 / d) ** 2;
+  const cyc = (d, k) => k ? pix(d) * k : 60;
+  const X = d => 60 + (D0 - d) / (D0 - D1) * 600, Y = pct => 260 - Math.min(pct, 110) / 110 * 240;
+  function draw() {
+    const c = COL(); clear(svg); if (!viewPx.n) return;
+    [0, 25, 50, 75, 100].forEach(p => { S('line', { x1: 60, x2: 660, y1: Y(p), y2: Y(p), stroke: p === 100 ? c.fg : c.line, 'stroke-dasharray': p === 100 ? '5 4' : '' }, svg);
+      S('text', { x: 52, y: Y(p) + 4, 'text-anchor': 'end', fill: c.muted, 'font-size': 11, class: 'mono' }, svg, p + '%'); });
+    S('text', { x: 64, y: Y(100) - 6, fill: c.fg, 'font-size': 11.5 }, svg, 'the whole frame');
+    [4000, 3000, 2500, 2000, 1500, 1000, 700, 350].forEach(d => S('text', { x: X(d), y: 278, 'text-anchor': 'middle', fill: c.muted, 'font-size': 11, class: 'mono' }, svg, fmt(d)));
+    S('text', { x: 360, y: 296, 'text-anchor': 'middle', fill: c.muted, 'font-size': 11.5 }, svg, 'distance, km (full size at 2,500)');
+    P.forEach(([n, k, col], j) => {
+      let dd = '';
+      for (let d = D0; d >= D1; d -= 10) { const pct = cyc(d, k) / FRAME * 100; dd += (dd ? 'L' : 'M') + X(d).toFixed(1) + ',' + Y(pct).toFixed(1); }
+      S('path', { d: dd, fill: 'none', stroke: c[col], 'stroke-width': 2.5 }, svg);
+      S('rect', { x: 680, y: 40 + j * 44, width: 12, height: 12, rx: 2, fill: c[col] }, svg);
+      const words = n.split(': ');
+      S('text', { x: 698, y: 50 + j * 44, fill: c.fg, 'font-size': 12.5, 'font-weight': 600 }, svg, words[0]);
+      S('text', { x: 698, y: 66 + j * 44, fill: c.muted, 'font-size': 11.5 }, svg, words[1]);
+    });
+    if (hx >= 0) {
+      const d = D0 - (hx - 60) / 600 * (D0 - D1);
+      S('line', { x1: hx, x2: hx, y1: 20, y2: 262, stroke: c.muted }, svg);
+      S('text', { x: hx + (hx > 520 ? -6 : 6), y: 30, 'text-anchor': hx > 520 ? 'end' : 'start', fill: c.fg, 'font-size': 11.5, class: 'mono' }, svg, `${fmt(Math.round(d / 10) * 10)} km · ${fmt(Math.round(pix(d)))} px`);
+      P.forEach(([n, k, col], j) => { const pct = cyc(d, k) / FRAME * 100;
+        S('text', { x: hx + (hx > 520 ? -6 : 6), y: 46 + j * 15, 'text-anchor': hx > 520 ? 'end' : 'start', fill: c[col], 'font-size': 11.5, class: 'mono' }, svg, `${pct < 0.1 ? pct.toFixed(3) : pct.toFixed(1)}%`); });
+    }
+  }
+  svg.addEventListener('pointermove', e => { const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 900; hx = x >= 60 && x <= 660 ? x : -1; draw(); });
+  svg.addEventListener('pointerleave', () => { hx = -1; draw(); });
+  viewPx.cbs.push(draw); draw(); redrawers.push(draw);
+});
+
+/* ---------- 3. memory map ---------- */
+safe('memmap', () => {
+  const svg = $('#memSvg');
+  const K = 1024;
+  const levels = {
+    mb: { total: 1048576, label: 'real-mode address space, 0 – 1 MB', ticks: [[0, '0'], [655360, '640K'], [786432, '768K'], [851968, '832K'], [983040, '960K'], [1048576, '1M']], segs: [
+      ['IVT, BIOS data, DOS', 14848, 'muted', 'Interrupt vectors, the BIOS data area and DOSBox\'s DOS: 14,848 bytes. DOSBox leaves a program 640,512.'],
+      ['RV.EXE, 618 KB', 632752, 'accent', 'The whole program image: 632,752 bytes. Click to zoom in.', 'exe'],
+      ['free', 7760, 'red', 'Left for DOS while the game runs: 7,760 bytes. build.sh warns under 8 KB, refuses under 2 KB.'],
+      ['video A000–BFFF', 131072, 'blue', 'The VESA bank window at A000: 640×400 is shown 64 KB at a time.'],
+      ['video BIOS', 65536, 'muted', 'C000–CFFF'],
+      ['UMB D000–EFFF', 131072, 'amber', 'DOSBox\'s 128 KB of upper memory: the band buffer (64,000 bytes) and the exact draw\'s dense slab (64 KB). Taken once at start, never given back.'],
+      ['system BIOS', 65536, 'muted', 'F000–FFFF. Above 1 MB: the HMA, then 62 MB of XMS (section 4).'],
+    ] },
+    exe: { total: 632752 + 7760, label: 'RV.EXE in memory (632,752 bytes) and what is left', ticks: [[0, '0'], [131072, '128K'], [262144, '256K'], [393216, '384K'], [524288, '512K'], [640512, '625.5K']], segs: [
+      ['RVHOOK', 1472, 'red', 'RVHOOK, image paragraph 0: the header, a 5-byte jmp far thunk per hookable function, and the hand-written flight loop\'s sites at fixed offsets. 1,472 bytes.'],
+      ['code, 315 KB', 322768, 'blue', 'Far code, medium model: 322,768 bytes. Built with -zm (a segment per function) and the linker\'s eliminate.'],
+      ['far data: fixed arrays, 251 KB', 257356, 'amber', 'Every buffer a fixed array (MEM_ARRAY). Biggest: drawing scratch 57 KB, ships 25 KB, rocks 18 KB, balls 17 KB, music 17 KB, explosions 13 KB, RV.DAT tables 13 KB, bolts 13 KB, panel 12 KB, sounds 11 KB, campaign 11 KB.'],
+      ['DGROUP', 50848, 'accent', 'Near data and the stack, last in the image as Watcom wants: 50,848 bytes. Click to zoom in.', 'dg'],
+      ['', 308, 'muted', 'Alignment and the rest: 308 bytes.'],
+      ['free', 7760, 'red', 'Left for DOS: 7,760 bytes.'],
+    ] },
+    dg: { total: 50848, label: 'DGROUP: DS-relative near data (50,848 bytes)', ticks: [[0, 'DS:0000'], [0x7400, '7400'], [0x7400 + 8049, ''], [50848 - 4096, ''], [50848, 'C6A0']], segs: [
+      ['the fixed block DS:0000–73FF', 29730, 'accent', 'The ABI: header and puppet directory, scalars, the layer\'s scratch, 128 slots of parallel arrays, the mission tables. Same offsets on every machine (section 10).'],
+      ['C data', 8049, 'blue', 'Initialised near variables and constants: 8,049 bytes.'],
+      ['BSS', 8970, 'violet', 'Zeroed near variables, the C runtime\'s among them: 8,970 bytes.'],
+      ['stack', 4096, 'amber', 'The stack: 4 KB (8 KB until 2026-10-31). Painted at start; the deepest use seen is 1.7 KB.'],
+    ] },
+  };
+  let cur = 'mb';
+  function draw() {
+    const c = COL(), L = levels[cur]; clear(svg);
+    const X = b => 10 + b / L.total * 880;
+    S('text', { x: 10, y: 22, fill: c.muted, 'font-size': 12.5 }, svg, L.label);
+    let at = 0; const small = [];
+    L.segs.forEach(([name, bytes, col, info, zoom]) => {
+      const x0 = X(at), w = Math.max(X(at + bytes) - x0, 2);
+      const r = S('rect', { x: x0, y: 40, width: w, height: 80, fill: c[col], 'fill-opacity': col === 'muted' ? 0.35 : 0.85, stroke: c.card, 'stroke-width': 1 }, svg);
+      if (zoom) { r.style.cursor = 'zoom-in'; r.addEventListener('click', () => { cur = zoom; sync(); draw(); }); }
+      hover(r, `<b>${name || 'other'}</b> · ${fmt(bytes)} bytes<br>${info}`);
+      if (w > 90 && name) S('text', { x: x0 + w / 2, y: 85, 'text-anchor': 'middle', fill: '#fff', 'font-size': 12.5, 'font-weight': 600, 'pointer-events': 'none' }, svg, name);
+      else if (name) small.push([x0 + w / 2, name, col]);
+      at += bytes;
+    });
+    small.forEach(([x, name, col], i) => {
+      const y = 148 + (i % 3) * 18;
+      S('line', { x1: x, x2: x, y1: 122, y2: y - 12, stroke: c.muted, 'stroke-width': 1 }, svg);
+      S('text', { x, y, 'text-anchor': x < 120 ? 'start' : x > 780 ? 'end' : 'middle', fill: c[col] === c.muted ? c.fg : c[col], 'font-size': 12 }, svg, name);
+    });
+    L.ticks.forEach(([b, t]) => { if (!t) return; S('text', { x: X(b), y: 216, 'text-anchor': b === 0 ? 'start' : b === L.total ? 'end' : 'middle', fill: c.muted, 'font-size': 11, class: 'mono' }, svg, t); });
+    if (cur !== 'mb') { const t = S('text', { x: 890, y: 22, 'text-anchor': 'end', fill: c.accent, 'font-size': 12.5 }, svg, '← back to 1 MB'); t.style.cursor = 'pointer'; t.addEventListener('click', () => { cur = 'mb'; sync(); draw(); }); }
+    S('text', { x: 10, y: 242, fill: c.muted, 'font-size': 11.5 }, svg, cur === 'mb' ? 'Linear scale. The free sliver is the real proportion.' : 'Hover for what each part holds.');
+  }
+  function sync() { $('#mmZoom').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.z === cur ? 'true' : 'false')); }
+  seg('#mmZoom', z => { cur = z; draw(); });
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 3. the tide line ---------- */
+safe('headroom', () => {
+  const svg = $('#headSvg');
+  const pts = [
+    ['Nov 1', 'no heap: the budget first measured', 21700],
+    ['Nov 1', 'the star table gone, spare ship and weapon records trimmed', 40700],
+    ['Nov 4', 'three days of features later (free in flight)', 9568],
+    ['Nov 4', 'near heap shrunk, -zm + eliminate, title font to XMS, log formats out of the EXE', 32352],
+    ['Nov 5', 'capital ships', 23328],
+    ['Nov 5', 'the base together: presence, the PA call', 21200],
+    ['Nov 5', 'a nine-item batch: radar sort, sound interpolation, speech', 18656],
+    ['Nov 6', 'capital-ship and fighter hull balance', 13760],
+    ['Nov 6', 'more of the day\'s work', 8752],
+    ['Nov 6', 'the fireball drawn as runs', 8224],
+    ['Nov 7', 'mayday and hail lines in every ship record', 6448],
+    ['Nov 7', 'those lines shared instead', 11856],
+    ['Nov 7', 'missile blasts', 11632],
+    ['Nov 7', 'the knock: an exact axis (1,367 B of 32-bit helper calls)', 9728],
+    ['Nov 7', 'the knock trimmed to 349 bytes', 10848],
+    ['Nov 8', 'the day starts', 9824],
+    ['Nov 8', 'comm cut, field navs, target page, points rule', 7344],
+    ['Nov 8', 'the static drawn without its 368-byte table', 7760],
+  ];
+  function draw() {
+    const c = COL(); clear(svg);
+    const X = i => 60 + i * (820 / (pts.length - 1)), Y = b => 260 - b / 44000 * 236;
+    [0, 10000, 20000, 30000, 40000].forEach(b => {
+      S('line', { x1: 60, x2: 880, y1: Y(b), y2: Y(b), stroke: c.line }, svg);
+      S('text', { x: 52, y: Y(b) + 4, 'text-anchor': 'end', fill: c.muted, 'font-size': 11, class: 'mono' }, svg, b / 1000 + 'K');
+    });
+    [[8192, 'warns under 8 KB', c.amber], [2048, 'refuses under 2 KB', c.red]].forEach(([b, t, col]) => {
+      S('line', { x1: 60, x2: 880, y1: Y(b), y2: Y(b), stroke: col, 'stroke-dasharray': '6 4', 'stroke-width': 1.5 }, svg);
+      S('text', { x: 878, y: Y(b) - 5, 'text-anchor': 'end', fill: col, 'font-size': 11.5 }, svg, t);
+    });
+    let d = `M${X(0)},${Y(pts[0][2])}`;
+    pts.forEach((p, i) => { if (i) d += `H${X(i)}V${Y(p[2])}`; });
+    S('path', { d, fill: 'none', stroke: c.accent, 'stroke-width': 2.5 }, svg);
+    let lastDay = '';
+    pts.forEach((p, i) => {
+      const dot = S('circle', { cx: X(i), cy: Y(p[2]), r: 5, fill: c.card, stroke: c.accent, 'stroke-width': 2 }, svg);
+      const hit = S('rect', { x: X(i) - 22, y: 10, width: 44, height: 250, fill: 'transparent' }, svg);
+      const h = `<b>${p[0]}: ${fmt(p[2])} bytes</b><br>${p[1]}`;
+      hover(hit, h); hover(dot, h);
+      if (p[0] !== lastDay) { S('text', { x: X(i), y: 280, 'text-anchor': 'middle', fill: c.muted, 'font-size': 11 }, svg, p[0]); lastDay = p[0]; }
+    });
+  }
+  draw(); redrawers.push(draw);
+});
+/* ---------- 4. XMS levels ---------- */
+safe('xms', () => {
+  const svg = $('#xmsSvg');
+  const LV = [
+    ['resident', 'accent', 'start to exit: campaign, songs, sounds, sky, baked flames, balls, blasts, hit shapes, fonts, log formats'],
+    ['base', 'blue', 'RV.DAT\'s small assets: palettes, fonts'],
+    ['room', 'amber', 'the room on screen: its pictures, read on first use in 64 KB slabs'],
+    ['mission', 'violet', 'a flight: ship sets, the cockpit, the comm faces'],
+    ['hazard', 'red', 'an asteroid field\'s art (ROCKS.DAT)'],
+  ];
+  const RES = 6.2, BASE = 0.2, ROOM = 1.4, MIS = 11.5, HAZ = 6.8;
+  const steps = [
+    ['the game starts', [RES, BASE, 0, 0, 0], 0],
+    ['the bar', [RES, BASE, ROOM, 0, 0], 2],
+    ['the briefing room', [RES, BASE, 1.1, 0, 0], 2],
+    ['launch: the room given back, the mission\'s sets read in', [RES, BASE, 0, MIS, 0], 3],
+    ['an asteroid field ahead', [RES, BASE, 0, MIS, HAZ], 4],
+    ['out of the field', [RES, BASE, 0, MIS, 0], 4],
+    ['home: the flight given back, the debriefing', [RES, BASE, 0.9, 0, 0], 3],
+  ];
+  const TOTAL = 62;
+  let step = 0, shown = steps[0][1].slice(), timer = 0, playing = true;
+  const box = $('#xmsSteps');
+  steps.forEach((s, i) => { const b = document.createElement('button'); b.textContent = i + 1; b.dataset.v = i; b.title = s[0]; b.setAttribute('aria-pressed', i ? 'false' : 'true'); box.appendChild(b); });
+  seg('#xmsSteps', v => { step = +v; timer = 0; });
+  $('#xmsPlay').addEventListener('click', () => { playing = !playing; $('#xmsPlay').textContent = playing ? '❚❚ pause' : '▶ play'; });
+  function draw() {
+    const c = COL(), [title, sizes, changed] = steps[step]; clear(svg);
+    S('text', { x: 10, y: 22, fill: c.fg, 'font-size': 15, 'font-weight': 600 }, svg, `${step + 1}. ${title}`);
+    const X = mb => 10 + mb / TOTAL * 880;
+    let at = 0;
+    shown.forEach((mb, i) => {
+      if (mb < 0.01) return;
+      const r = S('rect', { x: X(at), y: 40, width: X(at + mb) - X(at), height: 56, fill: c[LV[i][1]], 'fill-opacity': 0.85, stroke: c.card }, svg);
+      hover(r, `<b>${LV[i][0]}</b>: about ${mb.toFixed(1)} MB<br>${LV[i][2]}`);
+      if (X(at + mb) - X(at) > 60) S('text', { x: (X(at) + X(at + mb)) / 2, y: 73, 'text-anchor': 'middle', fill: '#fff', 'font-size': 12, 'pointer-events': 'none' }, svg, LV[i][0]);
+      at += mb;
+    });
+    S('rect', { x: X(at), y: 40, width: 890 - X(at), height: 56, fill: c.line, 'fill-opacity': 0.4 }, svg);
+    S('text', { x: (X(at) + 890) / 2, y: 73, 'text-anchor': 'middle', fill: c.muted, 'font-size': 12 }, svg, `free: about ${(TOTAL - at).toFixed(0)} MB`);
+    for (let m = 0; m <= 60; m += 10) S('text', { x: X(m), y: 112, 'text-anchor': m ? 'middle' : 'start', fill: c.muted, 'font-size': 11, class: 'mono' }, svg, m + ' MB');
+    LV.forEach(([n, col, what], i) => {
+      const y = 138 + i * 26, on = sizes[i] > 0;
+      S('rect', { x: 10, y: y - 11, width: 12, height: 12, rx: 2, fill: c[col], 'fill-opacity': on ? 0.9 : 0.25 }, svg);
+      S('text', { x: 30, y, fill: on ? c.fg : c.muted, 'font-size': 13, 'font-weight': i === changed && step ? 700 : 400 }, svg, `${i + 1}. ${n}`);
+      S('text', { x: 120, y, fill: c.muted, 'font-size': 12 }, svg, what);
+    });
+    S('text', { x: 10, y: 266, fill: c.muted, 'font-size': 11.5 }, svg, 'Allocated in nesting order, freed a whole level at a time; nothing in conventional memory moves.');
+  }
+  animate(svg, dt => {
+    if (playing) { timer += dt; if (timer > 2.6) { timer = 0; step = (step + 1) % steps.length; box.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-pressed', i === step ? 'true' : 'false')); } }
+    const tgt = steps[step][1]; let moved = false;
+    shown = shown.map((v, i) => { const n = v + (tgt[i] - v) * Math.min(1, dt * 6); if (Math.abs(n - v) > 1e-3) moved = true; return Math.abs(tgt[i] - n) < 0.01 ? tgt[i] : n; });
+    if (moved || !svg.firstChild || draw.lastStep !== step) { draw(); draw.lastStep = step; }
+  });
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 4. the band buffer ---------- */
+safe('band', () => {
+  const cv = $('#bandCv'), ctx = cv.getContext('2d');
+  const stars = Array.from({ length: 160 }, () => [Math.random(), Math.random(), Math.random()]);
+  const SX = 20, SY = 34, SW = 420, SH = 262;            // the screen, 640x400 scaled
+  const BX = 470, BY = 120, BW = 420, BH = SH / 4 * 1.0;  // the band buffer: 640 x 100 rows
+  const bands = [[0, 0.25], [0.25, 0.5], [0.5, 0.75]];   // the view's three runs of rows (the cockpit below stays)
+  let t = 0, shipX = 0.3;
+  function scene(c, x0, y0, w, h, r0, r1, layers, sx) {
+    c.save(); c.beginPath(); c.rect(x0, y0 + r0 * h, w, (r1 - r0) * h); c.clip();
+    c.fillStyle = '#000'; c.fillRect(x0, y0, w, h);
+    if (layers > 0) { c.fillStyle = '#cfd8e8'; stars.forEach(([a, b, s]) => c.fillRect(x0 + a * w, y0 + b * h, s > 0.8 ? 2 : 1, s > 0.8 ? 2 : 1)); }
+    if (layers > 1) {
+      const cx = x0 + sx * w, cy = y0 + 0.33 * h;
+      c.fillStyle = '#e8ecef'; c.beginPath(); c.moveTo(cx - 34, cy + 8); c.lineTo(cx + 30, cy - 4); c.lineTo(cx - 10, cy - 24); c.closePath(); c.fill();
+      c.fillStyle = '#27b35a'; c.beginPath(); c.moveTo(cx - 10, cy - 24); c.lineTo(cx + 2, cy - 30); c.lineTo(cx + 6, cy - 14); c.closePath(); c.fill();
+      c.fillStyle = '#ffb347'; c.beginPath(); c.arc(cx - 36, cy + 8, 4, 0, 7); c.fill();
+    }
+    if (layers > 2) {
+      c.fillStyle = '#5a4630';
+      c.beginPath(); c.moveTo(x0, y0 + 0.62 * h); c.quadraticCurveTo(x0 + w * 0.5, y0 + 0.5 * h, x0 + w, y0 + 0.62 * h); c.lineTo(x0 + w, y0 + h); c.lineTo(x0, y0 + h); c.closePath(); c.fill();
+      c.fillRect(x0 + w * 0.47, y0, w * 0.06, h * 0.6);
+      c.fillStyle = '#3c2f22'; c.fillRect(x0 + w * 0.08, y0 + h * 0.7, w * 0.22, h * 0.2); c.fillRect(x0 + w * 0.7, y0 + h * 0.7, w * 0.22, h * 0.2);
+    }
+    c.restore();
+  }
+  const done = [0, 0, 0];
+  function frame(dt) {
+    const k = COL(); t += dt;
+    const per = 2.2, phase = t % (per * 3 + 1.2), b = Math.floor(phase / per), local = (phase % per) / per;
+    if (phase < dt * 1.5) { done.fill(0); shipX = 0.2 + Math.random() * 0.6; }
+    ctx.fillStyle = k.card; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.font = '600 14px ' + cssv('--display'); ctx.fillStyle = k.fg;
+    ctx.fillText('the screen: 640 × 400, video memory', SX, 22);
+    ctx.fillText('the band buffer: 64,000 bytes', BX, BY - 14);
+    // the screen: last frame's picture, then the bands already flipped
+    scene(ctx, SX, SY, SW, SH, 0, 1, 3, shipX - 0.04);
+    for (let i = 0; i < 3; i++) if (done[i]) scene(ctx, SX, SY, SW, SH, bands[i][0], bands[i][1], 3, shipX);
+    ctx.strokeStyle = k.line; ctx.strokeRect(SX, SY, SW, SH);
+    ctx.strokeStyle = k.line; ctx.strokeRect(BX, BY, BW, BH);
+    if (b < 3) {
+      const [r0, r1] = bands[b];
+      ctx.strokeStyle = '#f0c04a'; ctx.lineWidth = 2; ctx.strokeRect(SX - 1, SY + r0 * SH, SW + 2, (r1 - r0) * SH); ctx.lineWidth = 1;
+      const layers = Math.min(3, 1 + Math.floor(local * 4.2));
+      // draw this band into the buffer, back to front
+      ctx.save(); ctx.translate(BX, BY - r0 * SH); scene(ctx, 0, 0, BW, SH, r0, r1, local < 0.7 ? layers : 3, shipX); ctx.restore();
+      ctx.font = '12.5px ' + cssv('--mono'); ctx.fillStyle = k.muted;
+      ctx.fillText(local < 0.7 ? ['stars', 'stars, ships', 'stars, ships, cockpit'][layers - 1] + ': drawn back to front' : 'XMS move: one call flips the run', BX, BY + BH + 22);
+      ctx.fillText(`run ${b + 1} of 3: rows ${Math.round(r0 * 400)}–${Math.round(r1 * 400) - 1}`, BX, BY + BH + 42);
+      if (local >= 0.7) {
+        const p = (local - 0.7) / 0.3, y = BY + (SY + r0 * SH - BY) * p, x = BX + (SX - BX) * p;
+        ctx.globalAlpha = 0.85; ctx.save(); ctx.translate(x, y - r0 * SH); scene(ctx, 0, 0, BW, SH, r0, r1, 3, shipX); ctx.restore(); ctx.globalAlpha = 1;
+        if (p > 0.95) done[b] = 1;
+      }
+    } else {
+      ctx.font = '12.5px ' + cssv('--mono'); ctx.fillStyle = k.muted;
+      ctx.fillText('the rows below did not change: not drawn, not flipped', BX, BY + BH + 22);
+    }
+  }
+  animate(cv, frame);
+});
+
+/* ---------- 5. the lightfield ---------- */
+safe('lightfield', () => {
+  const cv = $('#lfCv'), ctx = cv.getContext('2d'), atlas = $('#lfAtlas'), map = $('#lfMap');
+  const CELL = 128, COLS = 13, D2R = Math.PI / 180;
+  const off = document.createElement('canvas'), octx = off.getContext('2d');
+  let lat = 15, block = 1, auto = true, roll = 0;
+  // mesh space as the renderer has it: x the ship's left, y up, z the nose. Q maps mesh to camera (x right, y up, looking -z).
+  const mul = (a, b) => a.map(r => [0, 1, 2].map(j => r[0] * b[0][j] + r[1] * b[1][j] + r[2] * b[2][j]));
+  const rot = (ax, ang) => {
+    const [x, y, z] = ax, c = Math.cos(ang), s = Math.sin(ang), t = 1 - c;
+    return [[t * x * x + c, t * x * y - s * z, t * x * z + s * y], [t * x * y + s * z, t * y * y + c, t * y * z - s * x], [t * x * z - s * y, t * y * z + s * x, t * z * z + c]];
+  };
+  let Q = mul(rot([1, 0, 0], 0.35), rot([0, 1, 0], 2.2));
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  function viewBasis(e, h) {      // shipviews.py view_matrix: rows s, u (the picture's right and up)
+    const E = e * D2R, H = h * D2R;
+    const d = [Math.sin(H) * Math.cos(E), Math.sin(E), Math.cos(H) * Math.cos(E)];
+    const up = Math.abs(e) === 90 ? (e > 0 ? [-1, 0, 0] : [1, 0, 0]) : [0, 1, 0];
+    const f = d.map(v => -v);
+    let s = [f[1] * up[2] - f[2] * up[1], f[2] * up[0] - f[0] * up[2], f[0] * up[1] - f[1] * up[0]];
+    const n = Math.hypot(...s); s = s.map(v => v / n);
+    const u = [s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0]];
+    return { d, s, u };
+  }
+  let cands = [];
+  function buildLattice() {
+    cands = [{ idx: 0, e: 90, h: 90, m: false }, { idx: 144, e: -90, h: 90, m: false }];
+    for (let bi = 0; bi < 11; bi++) for (let hi = 0; hi < 13; hi++) {
+      const e = 75 - 15 * bi, h = 15 * hi;
+      if (lat === 30 && (e % 30 !== 0 || h % 30 !== 0)) continue;
+      const idx = 1 + bi * 13 + hi;
+      cands.push({ idx, e, h, m: false });
+      if (h > 0 && h < 180) cands.push({ idx, e, h: -h, m: true });
+    }
+    cands.forEach(cd => { const b = viewBasis(cd.e, Math.abs(cd.h)); cd.d = cd.m ? [-b.d[0], b.d[1], b.d[2]] : b.d; cd.s = cd.m ? [b.s[0], -b.s[1], -b.s[2]] : b.s; cd.u = cd.m ? [-b.u[0], b.u[1], b.u[2]] : b.u; });
+    drawMap();
+  }
+  const MX = h => 22 + (h + 180) / 360 * 316, MY = e => 16 + (90 - e) / 180 * 184;
+  let marker, chosen;
+  function drawMap() {
+    const c = COL(); clear(map);
+    S('rect', { x: 22, y: 16, width: 316, height: 184, fill: 'none', stroke: c.line }, map);
+    [-180, -90, 0, 90, 180].forEach(h => S('text', { x: MX(h), y: 214, 'text-anchor': 'middle', fill: c.muted, 'font-size': 10, class: 'mono' }, map, h + '°'));
+    [90, 0, -90].forEach(e => S('text', { x: 18, y: MY(e) + 3, 'text-anchor': 'end', fill: c.muted, 'font-size': 10, class: 'mono' }, map, e + '°'));
+    S('text', { x: 180, y: 228, 'text-anchor': 'middle', fill: c.muted, 'font-size': 10.5 }, map, 'heading of the camera, seen from the ship (0° = nose on)');
+    cands.forEach(cd => {
+      if (Math.abs(cd.e) === 90) { S('line', { x1: 22, x2: 338, y1: MY(cd.e), y2: MY(cd.e), stroke: c.accent, 'stroke-width': 2.5 }, map); return; }
+      S('circle', { cx: MX(cd.h), cy: MY(cd.e), r: lat === 15 ? 2.6 : 3.6, fill: cd.m ? 'none' : c.accent, stroke: c.accent, 'stroke-width': 1.2 }, map);
+    });
+    chosen = S('circle', { r: 7, fill: 'none', stroke: c.amber, 'stroke-width': 2.5 }, map);
+    marker = S('g', {}, map);
+    S('line', { x1: -6, x2: 6, y1: 0, y2: 0, stroke: c.red, 'stroke-width': 2 }, marker);
+    S('line', { x1: 0, x2: 0, y1: -6, y2: 6, stroke: c.red, 'stroke-width': 2 }, marker);
+  }
+  const stars = Array.from({ length: 140 }, () => [Math.random() * 560, Math.random() * 400, Math.random()]);
+  let dragging = false, lx = 0, ly = 0;
+  cv.addEventListener('pointerdown', e => { dragging = true; lx = e.clientX; ly = e.clientY; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; setAuto(false); });
+  cv.addEventListener('pointerup', () => { dragging = false; cv.style.cursor = 'grab'; });
+  cv.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+    Q = mul(rot([0, 1, 0], dx * 0.012), Q); Q = mul(rot([1, 0, 0], dy * 0.012), Q);
+  });
+  function setAuto(on) { auto = on; $('#lfAuto').textContent = on ? '❚❚ stop tumbling' : '▶ tumble'; }
+  $('#lfAuto').addEventListener('click', () => setAuto(!auto));
+  seg('#lfLat', v => { lat = +v; buildLattice(); });
+  seg('#lfDraw', v => { block = +v; });
+  $('#lfRoll').addEventListener('input', e => { roll = +e.target.value * D2R; $('#lfRollO').textContent = e.target.value + '°'; });
+  $('#lfRollO').textContent = '0°';
+  const distKm = () => Math.round(900 * Math.pow(10000 / 900, +$('#lfDist').value / 100) / 10) * 10;
+  const tumbleAx = (() => { const a = [0.35, 1, 0.25], n = Math.hypot(...a); return a.map(v => v / n); })();
+  function frame(dt) {
+    if (auto) Q = mul(rot(tumbleAx, dt * 0.45), Q);
+    const C = mul(rot([0, 0, 1], roll), Q);          // the camera's roll turns the picture, never changes the view
+    const d = C[2], cx = C[0], cy = C[1];               // camera's back, right, up in mesh space
+    let best = cands[0], bd = -2;
+    cands.forEach(cd => { const v = dot(cd.d, d); if (v > bd) { bd = v; best = cd; } });
+    const phi = Math.atan2(dot(cy, best.s), dot(cx, best.s));
+    const km = distKm(), px = CELL * 2500 / km * 1.4;
+    $('#lfDistO').textContent = fmt(km) + ' km';
+    // draw
+    const W = cv.width, H = cv.height;
+    ctx.fillStyle = '#05070a'; ctx.fillRect(0, 0, W, H);
+    stars.forEach(([x, y, s]) => { ctx.fillStyle = s > 0.85 ? '#fff' : '#8b95a8'; ctx.fillRect(x, y, 1, 1); });
+    if (atlas.complete && atlas.naturalWidth) {
+      const k = block, tw = Math.ceil(W / k), th = Math.ceil(H / k);
+      if (off.width !== tw || off.height !== th) { off.width = tw; off.height = th; }
+      octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, tw, th);
+      octx.imageSmoothingEnabled = false;
+      octx.translate(tw / 2, th / 2); octx.rotate(-phi); if (best.m) octx.scale(-1, 1);
+      const sz = px / k, sx = (best.idx % COLS) * CELL, sy = Math.floor(best.idx / COLS) * CELL;
+      octx.drawImage(atlas, sx, sy, CELL, CELL, -sz / 2, -sz / 2, sz, sz);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(off, 0, 0, tw * k, th * k);
+    }
+    // the map and the readout
+    const e = Math.asin(Math.max(-1, Math.min(1, d[1]))) / D2R, h = Math.atan2(d[0], d[2]) / D2R;
+    marker.setAttribute('transform', `translate(${MX(h)},${MY(e)})`);
+    if (Math.abs(best.e) === 90) { chosen.setAttribute('cx', MX(h)); chosen.setAttribute('cy', MY(best.e)); }
+    else { chosen.setAttribute('cx', MX(best.h)); chosen.setAttribute('cy', MY(best.e)); }
+    const err = Math.acos(Math.max(-1, Math.min(1, bd))) / D2R, turn = ((-phi / D2R) % 360 + 540) % 360 - 180;
+    const name = Math.abs(best.e) === 90 ? (best.e > 0 ? 'the top view' : 'the bottom view') : `band ${best.e > 0 ? '+' : ''}${best.e}°, heading ${Math.abs(best.h)}°`;
+    $('#lfRead').innerHTML =
+      `<span class="hi">view ${best.idx} of ${lat === 15 ? 145 : 37}</span>  ${name}${best.m ? '  <span class="hi">mirrored</span>' : ''}\n` +
+      `<span class="d">camera from the ship:</span> elevation ${e.toFixed(0)}°, heading ${h.toFixed(0)}°\n` +
+      `<span class="d">stored view off by:</span> ${err.toFixed(1)}°\n` +
+      `<span class="d">turned on screen:</span> ${turn.toFixed(0)}°\n` +
+      `<span class="d">size:</span> ${fmt(km)} km → ${Math.round(px)} px · ${block === 1 ? 'every pixel' : block + '×' + block + ' blocks'}`;
+  }
+  buildLattice(); redrawers.push(drawMap);
+  animate(cv, frame);
+});
+/* ---------- 7. card on, card off ---------- */
+safe('gxcmp', () => {
+  const box = $('#gxCmp'), over = box.querySelector('.over'), oimg = over.querySelector('img'), bar = box.querySelector('.bar'), knob = box.querySelector('.knob');
+  let pct = 50;
+  function place() {
+    oimg.style.width = box.clientWidth + 'px';
+    over.style.width = pct + '%'; bar.style.left = pct + '%'; knob.style.left = pct + '%';
+  }
+  function at(ev) { const r = box.getBoundingClientRect(); pct = Math.max(0, Math.min(100, (ev.clientX - r.left) / r.width * 100)); place(); }
+  let drag = false;
+  box.addEventListener('pointerdown', e => { drag = true; box.setPointerCapture(e.pointerId); at(e); });
+  box.addEventListener('pointermove', e => { if (drag) at(e); });
+  box.addEventListener('pointerup', () => drag = false);
+  addEventListener('resize', place); box.querySelector('img').addEventListener('load', place); place();
+  // the ` key's flip on the enlarged pair
+  const z = $('#gxZoom'), lab = $('#gxFlipLab');
+  let card = true, t = 0;
+  function flip() { card = !card; z.src = card ? 'img/gx-card-zoom.png' : 'img/gx-blocks-zoom.png'; lab.textContent = card ? 'card' : 'DOS alone: 2×2 blocks'; }
+  $('#gxFlip').addEventListener('click', () => { $('#gxAutoFlip').checked = false; flip(); });
+  addEventListener('keydown', e => { if (e.key === '`' || e.key === '~') { const r = z.getBoundingClientRect(); if (r.bottom > 0 && r.top < innerHeight) flip(); } });
+  new Image().src = 'img/gx-blocks-zoom.png';
+  animate(z, dt => { if (!$('#gxAutoFlip').checked) return; t += dt; if (t > 1.3) { t = 0; flip(); } });
+});
+
+/* ---------- 7. one ship, row by row ---------- */
+safe('rows', () => {
+  const cv = $('#rowsCv'), ctx = cv.getContext('2d');
+  const OW = 100, OH = 84, PXS = 5, GUT = 46, OX = 54, OY = 36;
+  let TH = 28 * Math.PI / 180, SC = 0.62, frozen = false;
+  const img = new Image();
+  let SRC = null, card, dos, kind, rows, first = -1, mode = 'dos', t = 0;
+  const lay = document.createElement('canvas'); lay.width = OW; lay.height = OH; const lctx = lay.getContext('2d');
+  const BLOCK = [['bundle', '0x00', 'the Schroedinger: its slot is its type'], ['view', '22', 'the stored picture'], ['flags', '0', 'not mirrored'],
+    ['x, y', '320, 150', 'its origin on screen'], ['scale', '159', '256 = as stored'], ['roll', '80', '1,024 a turn'],
+    ['fb', '→ row y0', 'the band buffer, far'], ['stride', '640', 'bytes a row'], ['fb_y0', '100', 'the row fb points at'],
+    ['y0, y1', '100, 200', 'the band\'s rows'], ['xa, xb', '0, 640', 'the columns'], ['ext', '→ table', 'the cockpit\'s opening'], ['result', '−100', 'set first: silence fails']];
+  const tbody = $('#rowsBlock tbody');
+  BLOCK.forEach(([f, v, w]) => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${f}</td><td>${v}</td><td style="color:var(--muted);font-family:var(--body)">${w}</td>`; tbody.appendChild(tr); });
+  const trs = [...tbody.querySelectorAll('tr')];
+  function sample(x, y) {
+    const dx = x - OX, dy = y - OY, c = Math.cos(TH), s = Math.sin(TH);
+    const u = 64 + (dx * c + dy * s) / SC, v = 64 + (-dx * s + dy * c) / SC;
+    if (u < 0 || v < 0 || u >= 128 || v >= 128) return -1;
+    const i = (Math.floor(v) * 128 + Math.floor(u)) * 4;
+    return SRC[i + 3] >= 128 ? i : -1;
+  }
+  function build() {
+    const n = OW * OH;
+    card = new Int32Array(n).fill(-1); dos = new Int32Array(n).fill(-1); kind = new Uint8Array(n); rows = [];
+    for (let y = 0; y < OH; y++) for (let x = 0; x < OW; x++) card[y * OW + x] = sample(x + .5, y + .5);
+    let pL = -1, pR = -1; first = -1;
+    for (let y = 0; y < OH; y++) {
+      let L = -1, R = -1;
+      for (let x = 0; x < OW; x++) if (card[y * OW + x] >= 0) { if (L < 0) L = x; R = x; }
+      if (L < 0) { rows.push({ type: 'empty', cost: 0 }); pL = pR = -1; continue; }
+      if (first < 0) first = y;
+      if ((y - first) % 2 === 0 || pL < 0) {           // a drawn row: one sample a 2x1 block
+        let ns = 0, l = -1, r = -1;
+        for (let x = L & ~1; x <= R; x += 2) {
+          ns++; const v = sample(x + 1, y + .5); if (v < 0) continue;
+          for (let k = 0; k < 2 && x + k < OW; k++) { dos[y * OW + x + k] = v; kind[y * OW + x + k] = 1; }
+          if (l < 0) l = x; r = Math.min(OW - 1, x + 1);
+        }
+        rows.push({ type: 'drawn', ns, cost: 24 + ns * 18 }); pL = l; pR = r;
+      } else {                                          // a copied row: the row above, then its own edges sampled
+        const a = Math.max(L, pL), b = Math.min(R, pR); let nc = 0, ne = 0;
+        for (let x = a; x <= b; x++) { const v = dos[(y - 1) * OW + x]; nc++; if (v >= 0) { dos[y * OW + x] = v; kind[y * OW + x] = 2; } }
+        for (let x = L; x <= R; x++) if (x < a || x > b) { ne++; const v = card[y * OW + x]; if (v >= 0) { dos[y * OW + x] = v; kind[y * OW + x] = 3; } }
+        rows.push({ type: 'copied', nc, ne, cost: 40 + Math.ceil(nc / 4) + ne * 18 }); pL = L; pR = R;
+      }
+    }
+  }
+  const T_FILL = 1.7, T_INT = 0.7, T_NO = 0.9, ROW_RATE = 15;
+  function timeline() {   // -> {phase, filled, rowsDone, result}
+    let tt = t, filled = 0, res = '−100';
+    if (frozen) return mode === 'card' ? { phase: 'card', filled: BLOCK.length, rowsDone: 0, res: '0' }
+      : { phase: 'over', filled: mode === 'dos' ? 0 : BLOCK.length, rowsDone: OH, res: mode === 'dos' ? '−100' : '−3' };
+    if (mode !== 'dos') {
+      if (tt < T_FILL) return { phase: 'fill', filled: Math.floor(tt / T_FILL * (BLOCK.length - 1)) + 1, rowsDone: 0, res };
+      tt -= T_FILL; filled = BLOCK.length;
+      if (tt < T_INT) return { phase: 'int', filled, rowsDone: 0, res };
+      tt -= T_INT;
+      if (mode === 'card') return { phase: 'card', filled, rowsDone: 0, res: '0', done: tt > 3 };
+      res = '−3';
+      if (tt < T_NO) return { phase: 'no', filled, rowsDone: 0, res };
+      tt -= T_NO;
+    } else if (tt < 0.9) return { phase: 'dense', filled: 0, rowsDone: 0, res };
+    else tt -= 0.9;
+    let shipRows = Math.floor(tt * ROW_RATE), y = 0;
+    for (; y < OH; y++) { if (rows[y].type === 'empty') { if (y < first) continue; if (shipRows <= 0) break; continue; } if (shipRows-- <= 0) break; }
+    return { phase: y >= OH ? 'over' : 'rows', filled, rowsDone: y, res, done: y >= OH && tt * ROW_RATE > 110 };
+  }
+  function frame(dt) {
+    if (!SRC) return;
+    t += dt;
+    const st = timeline(); if (st.done) t = 0;
+    const tint = $('#rowsTint').checked, W = cv.width, H = cv.height;
+    ctx.fillStyle = '#05070a'; ctx.fillRect(0, 0, W, H);
+    const im = lctx.createImageData(OW, OH), d = im.data;
+    let pxCard = 0, pxDrawn = 0, pxCopied = 0, pxEdge = 0, cost = mode === 'dos' ? 0 : (st.filled >= BLOCK.length ? 60 : st.filled * 4);
+    const showCard = st.phase === 'card';
+    for (let y = 0; y < OH; y++) {
+      const on = showCard || ((st.phase === 'rows' || st.phase === 'over') && y < st.rowsDone);
+      if (!on) continue;
+      if (!showCard) cost += rows[y].cost;
+      for (let x = 0; x < OW; x++) {
+        const i = y * OW + x, v = showCard ? card[i] : dos[i]; if (v < 0) continue;
+        const o = i * 4, kd = showCard ? 0 : kind[i];
+        let r = SRC[v], g = SRC[v + 1], b = SRC[v + 2];
+        if (showCard) pxCard++; else if (kd === 1) pxDrawn++; else if (kd === 2) pxCopied++; else if (kd === 3) pxEdge++;
+        if (tint && kd === 2) { r = r * .45 + 180 * .55; g = g * .45 + 130 * .55; b = b * .45 + 255 * .55; }
+        if (tint && kd === 3) { r = 240; g = 192; b = 74; }
+        d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
+      }
+    }
+    lctx.putImageData(im, 0, 0);
+    ctx.imageSmoothingEnabled = false; ctx.drawImage(lay, GUT, 0, OW * PXS, OH * PXS);
+    ctx.strokeStyle = 'rgba(255,255,255,.05)';
+    for (let x = 0; x <= OW; x += 2) { ctx.beginPath(); ctx.moveTo(GUT + x * PXS + .5, 0); ctx.lineTo(GUT + x * PXS + .5, H); ctx.stroke(); }
+    for (let y = 0; y <= OH; y += 2) { ctx.beginPath(); ctx.moveTo(GUT, y * PXS + .5); ctx.lineTo(W, y * PXS + .5); ctx.stroke(); }
+    // the gutter: what each row was
+    if (!showCard) for (let y = 0; y < Math.min(st.rowsDone, OH); y++) {
+      const ty = rows[y].type, yy = y * PXS;
+      if (ty === 'drawn') { ctx.fillStyle = '#5b7bd5'; ctx.fillRect(GUT - 14, yy, 10, PXS - 1); }
+      if (ty === 'copied') { ctx.fillStyle = '#b48cff'; ctx.fillRect(GUT - 10, yy - PXS + 2, 2, PXS + 1); ctx.beginPath(); ctx.moveTo(GUT - 13, yy + 1); ctx.lineTo(GUT - 5, yy + 1); ctx.lineTo(GUT - 9, yy + PXS); ctx.fill(); }
+    }
+    ctx.font = '12px ' + cssv('--mono');
+    if (st.phase === 'rows') {
+      const yy = st.rowsDone * PXS; ctx.fillStyle = '#f0c04a'; ctx.fillRect(GUT, yy, OW * PXS, 2);
+      const r = rows[st.rowsDone]; if (r) { ctx.fillStyle = '#f0c04a'; ctx.fillText(r.type === 'copied' ? 'copy ↓' : r.type === 'drawn' ? 'draw' : '', 2, yy + 9); }
+    }
+    const label = { dense: 'DOS: the dense copy, from the slab or XMS', fill: 'filling the block …', int: 'int 2Fh, AX = E720h', card: 'drawn by 2dfx-Voonew: every pixel, no emulated time',
+      no: 'result −3: the picture is still loading', rows: mode === 'fall' ? 'the same frame: DOS draws it after all' : 'DOS: row by row', over: mode === 'card' ? '' : 'done' }[st.phase];
+    ctx.fillStyle = st.phase === 'no' ? '#ef6a4a' : '#dfe7df'; ctx.font = '600 14px ' + cssv('--display');
+    ctx.fillText(label || '', GUT + 8, H - 12);
+    if (st.phase === 'int') { ctx.strokeStyle = '#f0c04a'; ctx.lineWidth = 3; ctx.strokeRect(GUT + 2, 2, OW * PXS - 4, OH * PXS - 4); ctx.lineWidth = 1; }
+    // the block
+    trs.forEach((tr, i) => {
+      tr.className = mode !== 'dos' && i < st.filled ? 'sel' : '';
+      tr.style.opacity = mode === 'dos' ? 0.35 : 1;
+      if (i === BLOCK.length - 1) tr.children[1].textContent = st.res;
+      if (i === 4) tr.children[1].textContent = Math.round(SC * 256);
+      if (i === 5) tr.children[1].textContent = ((Math.round(TH / (2 * Math.PI) * 1024) % 1024) + 1024) % 1024;
+    });
+    const nRows = rows.slice(0, st.rowsDone).reduce((a, r) => (a[r.type] = (a[r.type] || 0) + 1, a), {});
+    $('#rowsRead').innerHTML = mode === 'dos'
+      ? `<span class="d">no card: the block is never filled</span>\n<span class="d">rows drawn:</span> ${nRows.drawn || 0}  <span class="d">copied:</span> ${nRows.copied || 0}\n<span class="d">pixels: sampled</span> ${pxDrawn}  <span class="d">copied</span> ${pxCopied}  <span class="d">edges</span> ${pxEdge}\n<span class="hi">DOS's instructions: ~${fmt(cost)}</span>`
+      : mode === 'card'
+        ? `<span class="d">result:</span> ${st.res}\n<span class="d">pixels by the card:</span> ${pxCard}\n<span class="d">rows DOS drew:</span> 0\n<span class="hi">DOS's instructions: ~${fmt(cost)}</span> <span class="d">(fill the block, int 2Fh)</span>`
+        : `<span class="d">result:</span> ${st.res === '−3' ? '<span style="color:#ef8a76">−3: still loading</span>' : st.res}\n<span class="d">rows drawn:</span> ${nRows.drawn || 0}  <span class="d">copied:</span> ${nRows.copied || 0}\n<span class="d">pixels: sampled</span> ${pxDrawn}  <span class="d">copied</span> ${pxCopied}  <span class="d">edges</span> ${pxEdge}\n<span class="hi">DOS's instructions: ~${fmt(cost)}</span> <span class="d">(the block, then the rows)</span>`;
+  }
+  seg('#rowsMode', v => { mode = v; t = 0; frozen = false; });
+  $('#rowsReplay').addEventListener('click', () => { t = 0; frozen = false; });
+  $('#rowsRoll').addEventListener('input', e => { TH = +e.target.value * Math.PI / 180; $('#rowsRollO').textContent = e.target.value + '°'; if (SRC) build(); frozen = true; });
+  $('#rowsScale').addEventListener('input', e => { SC = +e.target.value / 100; $('#rowsScaleO').textContent = SC.toFixed(2); if (SRC) build(); frozen = true; });
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0); SRC = g.getImageData(0, 0, 128, 128).data; build();
+    let n1 = 0; for (let i = 3; i < SRC.length; i += 4) if (SRC[i] >= 128) n1++;
+    viewPx.n = n1; viewPx.cbs.forEach(f => f());
+  };
+  img.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAABIFBMVEUAAAARiBvMycb6+fhXVlW4trPY1tKsqaYSlB2YlpJISUmKiIbr6OZpaGYKUxB3d3QJSg4MaBQ1NzkOdxcINwylo5rGwrvEu7cnKCmkm5jm29gVGBiDgX3n4ts4PEJVWmJiYVwJJww9QUYeISIUpSFgXlsbHSCDfXuOqIwUniAlRyc2hjtKqFF6fIKzs5npysY1ZzdPdlJzhHG01rRLZUxeYGTPq6gyWjU8hEE9lURJRz9Ns1WSmnSryKrAvZfkvbkfOyIeUiIXtCQwejREPjpEmkaeoKHZ17Xj4bceRyAZdCA+XEBCPkNPjlFehGNhXmB9gIF+kn6JblCKdV+KmLiWsJafwqCqj42gnH3NqYHAv8Hzypzsy6b0894AAAAAAACVoeDpAAAAYHRSTlMA////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////AACIlWLrAAAI90lEQVR42u2Zd1vbyBbGrdEUj0bjETKqtmxCCYEECOltk+3l3t3be/n+X+O+Z2Ralr1YZoP/0cmDnRAezk/vqTMeDHrrrbfeeuutt95666233nrrrbfeeuutt95+ZpzziL7WR7CnM1VVGY/I1qRBpUWmtcZXixHdPUL2PhOVR6jwZcDw5vPNu0XQSqlKIRrK0F+zTL37YdPb3QWiIr/0qpQQ9PLg4Rh2ZxikAhOC5QL54BEEIWzA7gqDc5VLxjJyTgj0/sdXpAJBEMnmp+YAAmlQwLUmHVgjWRuI8UbL8cnlQBxyxlg+NapgUkIQIHy1cWGgGLV6fCIM1KQSmarj+EQyAfeMNeyvr+CWbMO7b4Vo3z8BBBDyOAxrGTPEgpEhMR+T/wQ22rhiQRBs/OoMEVJBNt/LWBZAQEiKTKsnX5B3jzG6DAEp8M/OBNbejPB9AxEElabQU2un7uVCBA9Czs9eN+919s/EEghMNrFEGmTWOqNzkT15PCLnrRCjM5Du7gEgEd8bEKgmZVxLmhHO7aucGgMY2kB4Hejl3r1VomxzViO1tvgNKmQGrRlBcMahUSuPMH129vB4X839YLAlmqKoBVS4CYFnoshzZYzGuNQ0L7RxL73/JDls3W+tAFAUrBYyhwo3IFAkFGNKaGNIDk3vU3f6+KtXv/np9OFhghpMNg+7E6C2pESn/VAsgyBYVqEUaFRX2kynoHjcxmGRkJ07gRXUXtBrZc3YUioYJZR1tCwgBt6ejS4sGXXNBhCg2aPdxzJcCkFPp1ND5aiqfykKg9Hm2aIvtTrc65qHvtFDA/TdGIG4IZU4vO8bZ90/qjhEIBAFZ6anG+f+uwLsteMOItRhGKLn5Xs3tCazT+lnt5wu/LTWzlqrTkejRWfoWpFcsTyHe1JAQoRGSHc9AtzCJJJGKPRk9EWHxuAQBxtZ8+S3i54w6XoiEIKe/wML45BBBLxIdl0umDBsGsSrXVSmDgcZbiS6k0MYLOfOnK4igM8CMkEBAERMFNchAMAvar4PZkgD+IzzOJ5HrmLacaigfrcKwIALWnhQByxu4phJkiGsf4bg4hg/QgUI/zQXLEfg5FEUcQdJnI34t9q9nKzQDzOBrQcTh2EBCpVPRgrFxwiWgiQo5sa3QTcNQeT4HFIoqQznqT2y91dZflAJWDwVVIjjyguQE4JU/AoCd8gWQZUPgwJWQg3znM/nkaHAWIhh0xUkQCliLKIhCxnmLUBrKi+uqmAL2k+lX9GgOh46cvNoDg2M7wg4VfJosooEgiHAeL4CyRifA7xAWK4GgscyLrBEIGSqIo88+nEOgC1u/3DkfGZyW05WiEEB9RFSyZTvR/EiE0NahS4j7Bla0KgQ6fioXZSWBNDac/QGSzcNnRMB5wBZNzUhiBBvdUOChFiLKfUlu5wLtkasVI61pFI+8PC7xelIn6bIAVRDFNlyZ4UgyLih5S9cNIQwFCr0nQEIYu8CgUMVOjMWDC9KkOp8b0GQRnNr8c552REgk3WO1KfnhsUs9oUYUiyo/OHy4gIHKYf2p/IQ2aiEsXaPGrMnKEuoEM3S1G51JPjigSRHZ33Iq1Cw2BO08zJXFwgpzUAtc4lJhpFIM8IT8FlaEsSsRCjSTghJ8OgpKc/Oa4DGEoZ03f6DnaBXVOcIHFVn9XGD4kE3VAzbCRIBGmxvgwEZAA2c7UgwfPs0bi4AwlBTa2Kx1wQ708kJy7MFwhbG8JRjItN/QKVin4LgL5dAMKMqSFNz1EmEZDgcPnqaX+pDuj2XKqQG7Uxx/YGOJ1HqFchAgOr/VqsGxSr8QOS+Ec1m6Tz1gUohQtlFAtjDp42XnL6EPxpnaHoVNuIaCXqC+mQ6TQEgjjPMZNu6fe7803sCSDCbLS7ZynSrQzkkw4PhcDx89BlyQXoASsUabQ9d50VBx2No0dRNrjnd52XH2XTf+cXkWRqlmEbbs6gNwmx7e556FcqSL90YvQTB7nD49oHMoQH1JGpEtdAYlwWdyVgThw2yTtBerkVGt3luitG0XeKYJcCACkyRBKDY5638QJgsnwUBAQyDt3/zbSCm8YjSoNsy5vfGhq4MqCzb2xuSwQ9nPK3FPikyGkgoxe3IaTSkth8u3xYTAHgZAqRjC9D8FyoI0h9riDZ0dSNlUdDQ8KcjXdC3CWAwbWhEabPvAIHtmVriTtqpGxEAZeIwwJ9HGm2p+e47rEriBU5Q2pUo8LK0U0+BjPAi4MD+HgRQ2+GH6KITRybaF5Cf6Wxm33RCGAUHwzYTguHu+LWo4ybHyY0UEGbxmyaTCbZA9GCKAz09KvJ9lvpTjvSXekBwWJggAHpC5LoQJOP26YMDYIyD4JvPYjAwbO5MmYt6mkxSNCGBY3We+UBkx670p2jZXm7Sxgj/kf0a30zTdNCpFMk3QYwpI745rmnm4LeaywUNGVJrsCMXOJ1QFuqobHsP/qpoR+V8O/2L+HP7zeURkoscaAGGAfqC8gvYR7nsQ6FF8YKyEdtZ2m4h0ByjEhLwNKryf7Y/27kfBpQFCEHgq+K1psF/zUOAgRu6TSbJ0zPA9Gu0R0rB31f/+fefOu+HyZkEC/f+9fUDoa9XcTLZtlrQATFKzxcx7CXUj47erHJtk3j5wTCmhDy3h09+SUWS4d276dF8dmkjL3cAMEkHKxHA8QFV4RUNgv939zGZlByr4Gy2c/E5z+T+zmA1S3z+URUOlwXwDDMARFhRb39Fm7T9+KoC4xtvfyaT+7M5JhO/PUKySMKFAv5tvIyg2EjN36vq1p8/JgsBLocgWfqGu/KfP96eoEMOfoQQAeGWKiRUBG07XEQg6HIBiN0M3fFWn3wiDykEYw/gg9HxBjKKMCFug5BQLwo2WgC8dr+EjaKpMeltJFhU4tDPhMMVfgfW0/KWleCT0Gfj4eCujbLgDADvnw/WQEAJsKjHZLAGS9r1OFgfwNkU6NgFftU0gPfxUpPokwHgoDReUwRagoPd3TUCEMHul9jNNtcGMA6+xHa8PgCqhPF4vLYItBoEawWgHTlYK8BgM1hjCnhb9YPp3nrrrbfeftn+B74XuBFq+1/GAAAAAElFTkSuQmCC';
+  animate(cv, frame);
+});
+
+/* ---------- 7. one ship through the card ---------- */
+safe('gxseq', () => {
+  const svg = $('#gxSeq');
+  const lanes = [['RV.EXE (DOS)', 95], ['2dfx-Voonew (in DOSBox)', 345], ['the page (wc.js)', 590], ['site · Cache API', 805]];
+  const steps = [
+    [0, 1, 'E700h  BX=\'RV\' CX=\'GX\': is there a card?'],
+    [1, 0, 'AL=FFh  BX=\'gx\'  CH.CL = 1.2', 'ret'],
+    [0, 1, 'E701h  ES:BX = the block, once'],
+    [0, 1, 'E710h  slot 5 ← "SHIP05.RV" (returns at once)'],
+    [1, 2, 'rvgxWant(5, "SHIP05.RV")'],
+    [2, 3, 'fetch rv/SHIP05.RV.gz (cached by SHA-1)'],
+    [0, 1, 'frame n: E720h draw slot 5, view 57, roll 34°'],
+    [1, 0, 'result −3: still loading → the game draws its blocks', 'ret'],
+    [3, 2, 'the bytes'],
+    [2, 1, 'wc_web_rvgx_loaded(5, bytes)'],
+    [0, 1, 'frame n+1: E720h draw'],
+    [1, 0, 'result 0: drawn, every pixel, into the frame buffer', 'ret'],
+  ];
+  let k = 0, t = 0, playing = true;
+  const Y = i => 62 + i * 27;
+  function draw() {
+    const c = COL(); clear(svg);
+    lanes.forEach(([n, x]) => {
+      S('rect', { x: x - 85, y: 8, width: 170, height: 28, rx: 5, fill: c.panel, stroke: c.line }, svg);
+      S('text', { x, y: 27, 'text-anchor': 'middle', fill: c.fg, 'font-size': 12.5, 'font-weight': 600 }, svg, n);
+      S('line', { x1: x, x2: x, y1: 36, y2: 392, stroke: c.line, 'stroke-dasharray': '3 4' }, svg);
+    });
+    steps.forEach(([a, b, label, ret], i) => {
+      if (i > k) return;
+      const x1 = lanes[a][1], x2 = lanes[b][1], y = Y(i), on = i === k;
+      const col = on ? c.amber : (ret ? c.muted : c.accent);
+      const prog = on ? Math.min(1, t / 0.6) : 1, xe = x1 + (x2 - x1) * prog;
+      S('line', { x1, x2: xe, y1: y, y2: y, stroke: col, 'stroke-width': on ? 2.5 : 1.6, 'stroke-dasharray': ret ? '5 3' : '' }, svg);
+      if (prog === 1) { const dir = Math.sign(x2 - x1); S('path', { d: `M${x2},${y} l${-8 * dir},-4 v8 z`, fill: col }, svg); }
+      else S('circle', { cx: xe, cy: y, r: 4.5, fill: col }, svg);
+      const lx = Math.min(x1, x2) + 6, anchorRight = a === 3 || (b === 3 && a === 2);
+      S('text', { x: anchorRight ? Math.max(x1, x2) - 6 : lx, y: y - 5, 'text-anchor': anchorRight ? 'end' : 'start', fill: on ? c.fg : c.muted, 'font-size': 11.5, class: 'mono' }, svg, label);
+    });
+  }
+  animate(svg, dt => {
+    if (!playing) return;
+    t += dt;
+    if (t > (k === steps.length - 1 ? 3.5 : 1.25)) { t = 0; k = (k + 1) % steps.length; }
+    draw();
+  });
+  $('#gxSeqPlay').addEventListener('click', () => { playing = !playing; $('#gxSeqPlay').textContent = playing ? '❚❚ pause' : '▶ play'; });
+  $('#gxSeqStep').addEventListener('click', () => { playing = false; $('#gxSeqPlay').textContent = '▶ play'; k = (k + 1) % steps.length; t = 1; draw(); });
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 7. the block ---------- */
+safe('gxblock', () => {
+  const svg = $('#gxBlock');
+  const F = [
+    [0, 2, 'result', 'int16: written by the card; negative = why not (−1 empty slot, −2 not to be had, −3 still loading, −4 no such view, −5 not writable memory)', 'red'],
+    [2, 2, 'bundle', 'uint16: a slot, 0–255 (the game\'s convention: its ship type)', 'accent'],
+    [4, 2, 'view', 'uint16: which picture in the bundle', 'accent'],
+    [6, 2, 'flags', 'bit 0: mirrored left to right', 'accent'],
+    [8, 2, 'x', 'int16: where the picture\'s origin lands', 'accent'],
+    [10, 2, 'y', 'int16', 'accent'],
+    [12, 2, 'scale', 'int16: 256 = as stored', 'accent'],
+    [14, 2, 'roll', 'int16: clockwise, 1,024 a turn', 'accent'],
+    [16, 4, 'fb', 'far: the first pixel of screen row fb_y0 (offset, segment)', 'blue'],
+    [20, 2, 'stride', 'bytes a row', 'blue'],
+    [22, 2, 'fb_y0', 'the screen row fb points at', 'blue'],
+    [24, 2, 'y0', 'rows it may write: y0 ..', 'teal'],
+    [26, 2, 'y1', '.. y1−1', 'teal'],
+    [28, 2, 'xa', 'columns it may write: xa ..', 'teal'],
+    [30, 2, 'xb', '.. xb−1', 'teal'],
+    [32, 4, 'ext', 'far: a table of each row\'s first and last column: the cockpit\'s opening', 'violet'],
+    [36, 2, 'ext_y0', 'the rows that table covers', 'violet'],
+    [38, 2, 'ext_rows', '', 'violet'],
+    [40, 4, 'name', 'far: E710h\'s NUL-terminated name, e.g. "SHIP05.RV"', 'amber'],
+    [44, 4, '', 'unused', 'line'],
+    [48, 4, 'stat_draws', 'E711h: draws since the start', 'muted'],
+    [52, 4, 'stat_px', 'E711h: pixels', 'muted'],
+    [56, 4, 'stat_us', 'E711h: host microseconds', 'muted'],
+    [60, 2, 'ready', 'bundles in', 'muted'],
+    [62, 2, 'waiting', 'bundles on the way', 'muted'],
+    [64, 8, 'seed age life count', 'E730h debris: uint16 seed, age, life, count', 'red'],
+    [72, 6, 'focal cx cy', 'int16 focal, cx, cy', 'red'],
+    [78, 12, 'x y z', 'int32: the cloud\'s centre in camera space, 16ths of a km', 'red'],
+    [90, 8, 'spread piece', 'int32 spread, piece', 'red'],
+    [98, 18, 'm[9]', 'int16: world to camera, 256 = 1', 'red'],
+    [116, 8, 'metal[8]', 'palette entries, dark to light', 'red'],
+    [124, 4, 'hot[4]', 'the glow\'s palette entries', 'red'],
+  ];
+  function draw() {
+    const c = COL(); clear(svg);
+    const CW = 53, CH = 26, X0 = 10, Y0 = 18;
+    for (let r = 0; r < 8; r++) S('text', { x: X0 + 16 * CW + 6, y: Y0 + r * CH + 17, fill: c.muted, 'font-size': 10.5, class: 'mono' }, svg, '+' + r * 16);
+    F.forEach(([o, n, name, what, col]) => {
+      for (let b = o; b < o + n; b++) {
+        const r = Math.floor(b / 16), x = X0 + (b % 16) * CW, y = Y0 + r * CH;
+        const cell = S('rect', { x: x + 1, y: y + 1, width: CW - 2, height: CH - 2, rx: 3, fill: c[col], 'fill-opacity': col === 'muted' || col === 'line' ? 0.3 : 0.75 }, svg);
+        hover(cell, `<b>${o}${n > 1 ? '–' + (o + n - 1) : ''}: ${name || '(unused)'}</b><br>${what}`);
+        if (b === o || b % 16 === 0) S('text', { x: x + 4, y: y + 17, fill: col === 'muted' || col === 'line' ? c.fg : '#fff', 'font-size': 10.5, class: 'mono', 'pointer-events': 'none' }, svg, (name || '').slice(0, Math.max(5, n * 7)).split(' ')[0]);
+      }
+    });
+    S('text', { x: X0, y: 240, fill: c.muted, 'font-size': 11.5 }, svg, 'Bytes 0–63: a ship\'s draw (version 1.0). Bytes 64–127: the debris cloud (1.2). Packed, little-endian, at a fixed address.');
+  }
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 8. the capsule ---------- */
+safe('bolt', () => {
+  const cv = $('#boltCv'), ctx = cv.getContext('2d');
+  const P = 10, GW = cv.width / P, GH = cv.height / P;
+  let A = [14, 20], B = [56, 8], R = 4, flying = true, ft = 0, dragK = -1;
+  const C0 = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+  function dist(px, py) {
+    const vx = B[0] - A[0], vy = B[1] - A[1], wx = px - A[0], wy = py - A[1];
+    const l = vx * vx + vy * vy, t = l ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / l)) : 0;
+    return Math.hypot(wx - t * vx, wy - t * vy);
+  }
+  function draw() {
+    ctx.fillStyle = '#05070a'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.strokeStyle = 'rgba(255,255,255,.06)';
+    for (let x = 0; x <= GW; x++) { ctx.beginPath(); ctx.moveTo(x * P + .5, 0); ctx.lineTo(x * P + .5, cv.height); ctx.stroke(); }
+    for (let y = 0; y <= GH; y++) { ctx.beginPath(); ctx.moveTo(0, y * P + .5); ctx.lineTo(cv.width, y * P + .5); ctx.stroke(); }
+    let rows = 0, px = 0, spans = 0; const line = R < 0.75;
+    const COLS = ['#ffffff', '#e8312a', '#ff8a1e'];
+    if (line) {   // under 0.75 px: a line, one pixel a step along its long axis
+      const n = Math.max(Math.abs(B[0] - A[0]), Math.abs(B[1] - A[1])) | 0, seen = new Set();
+      for (let i = 0; i <= n; i++) { const x = Math.floor(A[0] + (B[0] - A[0]) * i / Math.max(1, n)), y = Math.floor(A[1] + (B[1] - A[1]) * i / Math.max(1, n)); ctx.fillStyle = COLS[1]; ctx.fillRect(x * P, y * P, P, P); px++; seen.add(y); }
+      rows = seen.size;
+    } else {
+      for (let y = 0; y < GH; y++) {
+        let lo = 1e9, hi = -1, layers = [[1e9, -1], [1e9, -1], [1e9, -1]];
+        for (let x = 0; x < GW; x++) {
+          const d = dist(x + .5, y + .5); if (d > R) continue;
+          const k = d < R * 0.4 ? 0 : d < R * 0.72 ? 1 : 2;
+          ctx.fillStyle = COLS[k]; ctx.fillRect(x * P, y * P, P, P); px++;
+          lo = Math.min(lo, x); hi = Math.max(hi, x);
+          for (let j = 0; j <= k; j++) { layers[j][0] = Math.min(layers[j][0], x); layers[j][1] = Math.max(layers[j][1], x); }
+        }
+        if (hi >= 0) {
+          rows++; spans += layers.filter(l => l[1] >= 0).length;
+          if ($('#boltSpans').checked) { ctx.strokeStyle = 'rgba(95,211,141,.7)'; ctx.strokeRect(lo * P + .5, y * P + .5, (hi - lo + 1) * P - 1, P - 1); }
+        }
+      }
+    }
+    [A, B].forEach(p => { ctx.strokeStyle = '#f0c04a'; ctx.beginPath(); ctx.arc(p[0] * P, p[1] * P, 7, 0, 7); ctx.stroke(); });
+    $('#boltRo').textContent = R.toFixed(2) + ' px';
+    $('#boltRead').innerHTML = line
+      ? `<span class="hi">a line</span> (radius under 0.75 px): ${px} pixels over ${rows} rows, no set-up`
+      : `<span class="hi">a capsule</span>: ${rows} rows, ${px} pixels, ${spans} spans <span class="d">(rim, body, core: one span a row each, filled with rep stosb)</span>`;
+  }
+  function cell(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * GW, (e.clientY - r.top) / r.height * GH]; }
+  cv.addEventListener('pointerdown', e => {
+    const p = cell(e); flying = false; $('#boltFly').textContent = '▶ fly away';
+    dragK = Math.hypot(p[0] - A[0], p[1] - A[1]) < Math.hypot(p[0] - B[0], p[1] - B[1]) ? 0 : 1;
+    cv.setPointerCapture(e.pointerId); (dragK ? B : A).splice(0, 2, ...p); draw();
+  });
+  cv.addEventListener('pointermove', e => { if (dragK < 0) return; (dragK ? B : A).splice(0, 2, ...cell(e)); draw(); });
+  cv.addEventListener('pointerup', () => dragK = -1);
+  $('#boltR').addEventListener('input', e => { R = +e.target.value; flying = false; $('#boltFly').textContent = '▶ fly away'; draw(); });
+  $('#boltSpans').addEventListener('change', draw);
+  $('#boltFly').addEventListener('click', () => { flying = !flying; ft = 0; $('#boltFly').textContent = flying ? '❚❚ stop' : '▶ fly away'; });
+  animate(cv, dt => {
+    if (!flying) return;
+    ft += dt; const z = 1 + ((ft % 6) / 6) * 13;   // a bolt fired from beside the eye, flying off: 1/z perspective
+    const hx = 21 / z, hy = 6 / z, cx = 36 + 20 / z, cy = 15 - 6 / z;
+    A = [cx - hx, cy + hy]; B = [cx + hx, cy - hy]; R = Math.max(0.3, 7 / z);
+    $('#boltR').value = R; draw();
+  });
+  draw();
+});
+
+/* ---------- 8. flames: two frames mixed by rows ---------- */
+safe('flame', () => {
+  const cv = $('#flameCv'), ctx = cv.getContext('2d');
+  const W = 64, H = 22, N = 4, SC = 3;
+  let seed = 7; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const ramp = [[0, 0, 0, 0], [120, 20, 30, 255], [200, 40, 20, 255], [255, 110, 20, 255], [255, 190, 60, 255], [255, 240, 170, 255], [255, 255, 255, 255]];
+  const frames = [];
+  for (let f = 0; f < N; f++) {
+    const img = ctx.createImageData(W, H), noise = Array.from({ length: W * H }, rnd);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const u = x / W, v = (y - H / 2 + .5) / (H / 2);
+      const width = 0.95 * (1 - u) ** 0.7, prof = Math.max(0, 1 - Math.abs(v) / Math.max(0.05, width));
+      let heat = prof * (1 - u * 0.85) * (0.75 + 0.5 * noise[y * W + x]) * 1.15;
+      heat += (noise[y * W + ((x + 3) % W)] - 0.5) * 0.25 * prof;
+      const k = Math.max(0, Math.min(6, Math.floor(heat * 6.5)));
+      const c = ramp[k], i = (y * W + x) * 4;
+      img.data[i] = c[0]; img.data[i + 1] = c[1]; img.data[i + 2] = c[2]; img.data[i + 3] = k ? 255 : 0;
+    }
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H; oc.getContext('2d').putImageData(img, 0, 0); frames.push(oc);
+  }
+  let t = 0, a = 0, b = 1;
+  animate(cv, dt => {
+    t += dt; if (t > 0.09) { t = 0; a = (a + 1) % N; b = (a + 1 + Math.floor(rnd() * (N - 1))) % N; }
+    const c = COL();
+    ctx.fillStyle = '#05070a'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.imageSmoothingEnabled = false;
+    const px = [[20, 'baked frame ' + (a + 1)], [260, 'baked frame ' + (b + 1)], [500, 'drawn: rows from both']];
+    ctx.drawImage(frames[a], px[0][0], 60, W * SC, H * SC);
+    ctx.drawImage(frames[b], px[1][0], 60, W * SC, H * SC);
+    for (let y = 0; y < H; y++) ctx.drawImage(frames[y & 1 ? b : a], 0, y, W, 1, px[2][0], 60 + y * SC, W * SC, SC);
+    ctx.font = '12.5px ' + cssv('--mono'); ctx.fillStyle = '#c9d3c9';
+    px.forEach(([x, l]) => ctx.fillText(l, x, 40));
+    ctx.fillStyle = '#7fa58d'; ctx.fillText('a new pair every few frames: flicker for the price of a copy', 20, 180);
+  });
+});
+
+/* ---------- 8. fireballs: per pixel or runs ---------- */
+safe('fire', () => {
+  const cv = $('#fireCv'), ctx = cv.getContext('2d');
+  const n = 16, cel = [];
+  let s = 3; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const pal = [null, '#5a0d0a', '#9b1d10', '#d4421a', '#f07a1e', '#ffb43c', '#ffe27a', '#ffffff'];
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5) / 8, h = (1 - d) * 1.25 + (r() - .5) * 0.5;
+    cel.push(d > 0.98 ? 0 : Math.max(0, Math.min(7, Math.round(h * 7.2))));
+  }
+  let N = 120, growing = false, race = 0;
+  const pic = document.createElement('canvas'), pctx = pic.getContext('2d');
+  let plan;   // per output row: source row, its runs, and whether it repeats the row above
+  function build() {
+    pic.width = N; pic.height = N; pctx.clearRect(0, 0, N, N);
+    const edges = []; for (let u = 0; u <= n; u++) edges.push(Math.ceil(u * N / n));
+    plan = []; let left = 0, right = 0;
+    for (let y = 0; y < N; y++) {
+      const v = Math.min(n - 1, Math.floor(y * n / N)), runs = [];
+      for (let u = 0; u < n; u++) {
+        const col = cel[v * n + u]; if (!col) continue;
+        const x0 = edges[u], x1 = edges[u + 1];
+        if (runs.length && runs[runs.length - 1][2] === col && runs[runs.length - 1][1] === x0) runs[runs.length - 1][1] = x1;
+        else runs.push([x0, x1, col]);
+      }
+      const copy = y > 0 && plan[y - 1].v === v;
+      const w = runs.length ? runs[runs.length - 1][1] - runs[0][0] : 0;
+      const costR = copy ? 10 + Math.ceil(w / 4) : runs.reduce((a, q) => a + 12 + (q[1] - q[0]), 6);
+      plan.push({ v, runs, copy, costL: 9 * N, costR });
+      left += 9 * N; right += costR;
+      runs.forEach(([x0, x1, col]) => { pctx.fillStyle = pal[col]; pctx.fillRect(x0, y, x1 - x0, 1); });
+    }
+    plan.left = left; plan.right = right;
+    $('#fireNo').textContent = N + ' px';
+    $('#fireRead').innerHTML = `<span class="d">per pixel (rv_scale_row, ~9 instructions a pixel, clear ones too):</span> ${fmt(left)}\n` +
+      `<span class="d">runs (rep stosb) + repeated rows copied (rep movsd):</span> ${fmt(right)}  <span class="hi">${(left / right).toFixed(1)}× fewer</span>\n` +
+      `<span class="d">rows copied from the row above:</span> ${plan.filter(p => p.copy).length} of ${N}`;
+    race = 0;
+  }
+  function panel(x0, label, doneCost, isRuns) {
+    const M = plan.length, y0 = 40, sc = 250 / M, sz = 250;
+    ctx.font = '600 13px ' + cssv('--display'); ctx.fillStyle = '#dfe7df'; ctx.fillText(label, x0, 24);
+    let cost = 0, y = 0;
+    for (; y < M; y++) { const k = isRuns ? plan[y].costR : plan[y].costL; if (cost + k > doneCost) break; cost += k; }
+    ctx.imageSmoothingEnabled = false;
+    if (y > 0) ctx.drawImage(pic, 0, 0, M, y, x0, y0, sz, y * sc);
+    if (y < M) {
+      const frac = (doneCost - cost) / (isRuns ? plan[y].costR : plan[y].costL), xw = Math.floor(M * frac);
+      if (xw > 0) ctx.drawImage(pic, 0, y, xw, 1, x0, y0 + y * sc, xw * sc, sc);
+      ctx.fillStyle = '#f0c04a'; ctx.fillRect(x0 - 8, y0 + y * sc, 4, Math.max(2, sc));
+    }
+    if (isRuns) for (let yy = 0; yy < Math.min(y, M); yy++) if (plan[yy].copy) { ctx.fillStyle = 'rgba(95,211,141,.85)'; ctx.fillRect(x0 + sz + 4, y0 + yy * sc, 3, Math.max(1, sc)); }
+    ctx.font = '12px ' + cssv('--mono'); ctx.fillStyle = '#9fb0a4';
+    ctx.fillText(`${fmt(Math.min(doneCost, isRuns ? plan.right : plan.left))} instructions`, x0, y0 + sz + 22);
+    if (isRuns) { ctx.fillStyle = 'rgba(95,211,141,.85)'; ctx.fillText('▌ green: copied from the row above', x0, y0 + sz + 40); }
+  }
+  function draw(dt) {
+    if (growing) { N += dt * 50; if (N >= 240) { N = 240; growing = false; $('#fireGrow').textContent = '▶ grow'; } $('#fireN').value = N | 0; const k = N | 0; if (k !== pic.width) { const keep = N; N = k; build(); N = keep; } }
+    if (growing) race = plan.left * 1.2; else race += dt * plan.left / 5;
+    if (race > plan.left * 1.35) race = 0;
+    ctx.fillStyle = '#05070a'; ctx.fillRect(0, 0, cv.width, cv.height);
+    panel(40, 'per pixel: every pixel scaled', race, false);
+    panel(500, 'runs: a fill a run, a copy a repeated row', race, true);
+  }
+  $('#fireN').addEventListener('input', e => { N = +e.target.value; build(); });
+  $('#fireGrow').addEventListener('click', () => { growing = !growing; if (growing && N >= 239) { N = 16; build(); } $('#fireGrow').textContent = growing ? '❚❚ stop' : '▶ grow'; });
+  build(); animate(cv, draw);
+});
+/* ---------- 9. the field from above ---------- */
+safe('rocks', () => {
+  const cv = $('#rockCv'), ctx = cv.getContext('2d');
+  const KM = 0.07, PX = 170, PY = 165, VP = 375, CONE = 3050, HALF = 39 * Math.PI / 180;
+  let rocks = [], worldX = 0, acc = 0;
+  function spawn() {
+    const a = (Math.random() * 2 - 1) * HALF, x = Math.cos(a) * CONE, y = Math.sin(a) * CONE;
+    const aimed = Math.random() < 1 / 9;
+    let vx, vy, lead = null;
+    if (aimed) {   // at the lead point: where the fighter will be when the rock gets there
+      const t = Math.hypot(x, y) / (VP + 300) * 1.3;   // where the fighter will be at t: (VP t, 0) from here
+      vx = (VP * t - x) / t; vy = -y / t; lead = t;
+    } else { const s = (150 + Math.random() * 90) * (Math.random() < .5 ? -1 : 1); vx = 0; vy = s; }
+    rocks.push({ x, y, vx, vy, aimed, r: 2.5 + Math.random() * 2.5, trail: [] });
+  }
+  function step(dt) {
+    worldX += VP * dt; acc += dt;
+    if (rocks.length < 20 && acc > 0.28) { acc = 0; spawn(); }
+    rocks.forEach(k => { k.x += (k.vx - VP) * dt; k.y += k.vy * dt; k.trail.push([k.x, k.y]); if (k.trail.length > 26) k.trail.shift(); });
+    rocks = rocks.filter(k => k.x > -1900 && Math.hypot(k.x, k.y) < 4300);
+  }
+  for (let i = 0; i < 400; i++) step(1 / 30);   // the field already going when it comes into view
+  animate(cv, dt => {
+    step(dt);
+    ctx.fillStyle = '#05070a'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.strokeStyle = 'rgba(255,255,255,.07)';
+    for (let gx = -(worldX % 1000); gx < 9000; gx += 1000) { const x = PX + (gx - 2000) * KM; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cv.height); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(95,211,141,.13)'; ctx.strokeStyle = 'rgba(95,211,141,.6)';
+    ctx.beginPath(); ctx.moveTo(PX, PY); ctx.arc(PX, PY, CONE * KM, -HALF, HALF); ctx.closePath(); ctx.fill(); ctx.stroke();
+    rocks.forEach(k => {
+      ctx.strokeStyle = k.aimed ? 'rgba(239,106,74,.5)' : 'rgba(154,163,173,.35)'; ctx.beginPath();
+      k.trail.forEach(([x, y], i) => i ? ctx.lineTo(PX + x * KM, PY + y * KM) : ctx.moveTo(PX + x * KM, PY + y * KM)); ctx.stroke();
+      if (k.aimed) {
+        const t = -k.x / (k.vx - VP - 1e-6), lx = PX + VP * t * KM;   // the lead point, ahead of the fighter
+        if (k.x > 0 && t > 0) {
+          ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(PX + k.x * KM, PY + k.y * KM); ctx.lineTo(lx, PY); ctx.stroke(); ctx.setLineDash([]);
+          ctx.strokeStyle = '#ef6a4a'; ctx.beginPath(); ctx.moveTo(lx - 5, PY - 5); ctx.lineTo(lx + 5, PY + 5); ctx.moveTo(lx + 5, PY - 5); ctx.lineTo(lx - 5, PY + 5); ctx.stroke();
+        }
+      }
+      ctx.fillStyle = k.aimed ? '#ef6a4a' : '#9aa3ad'; ctx.beginPath(); ctx.arc(PX + k.x * KM, PY + k.y * KM, k.r, 0, 7); ctx.fill();
+    });
+    ctx.fillStyle = '#f0c04a'; ctx.beginPath(); ctx.moveTo(PX + 12, PY); ctx.lineTo(PX - 8, PY - 7); ctx.lineTo(PX - 8, PY + 7); ctx.closePath(); ctx.fill();
+    ctx.font = '12px ' + cssv('--mono'); ctx.fillStyle = '#9fb0a4';
+    ctx.fillText('you: 250 kps →', PX - 60, PY + 26);
+    ctx.fillText('3,050 km', PX + CONE * KM * Math.cos(HALF) - 30, PY - CONE * KM * Math.sin(HALF) - 8);
+    ctx.fillText('rocks come only from ahead; most cross at 100–160 kps', 470, 24);
+    ctx.fillStyle = '#9fb0a4'; ctx.fillRect(760, 305, 1000 * KM, 2); ctx.fillText('1,000 km', 760, 298);
+  });
+});
+
+/* ---------- 10. the fixed block ---------- */
+safe('abi', () => {
+  const FIELDS = [['maybeEntityType', 2, 'the kind of thing in the slot'], ['gInstanceShipTypes', 2, 'ship type: a row of ships.csv'], ['parentShipForShip', 1, ''], ['commAnimInfo', 2, 'side: 0 Terran, 1 Aera, 2 Rlaan'],
+    ['shipStateByte', 1, 'pilot: 0–7 named, 8 a human'], ['slotMissionShip', 2, 'mission ship in the slot'], ['gPositionVector', 12, 'int32 x, y, z: 256 = 1 km'], ['gVelocityVector', 12, 'position change a frame'],
+    ['gOrientationRightVector', 12, 'int32, 256 = 1.0'], ['gOrientationUpVector', 12, ''], ['gOrientationFrontVector', 12, ''], ['setSpeed', 4, 'throttle, kps'], ['speedLo', 4, 'current speed, kps'],
+    ['curShield', 4, 'front, rear'], ['shieldMax', 4, ''], ['armorState', 8, 'front, rear, left, right'], ['damagePoints', 2, 'hull damage'], ['coreHp', 1, ''], ['hullCounter', 1, ''], ['gunDamage', 1, ''],
+    ['engineFlag', 1, '0xff disabled'], ['gunEnergy', 2, 'recharges to 100'], ['gunTable', 0x33, 'count + 10 guns of 5 bytes'], ['missileTarget', 1, 'published before a launch'], ['shipAiState', 2, '9 dying'],
+    ['gMaybeShipRadius', 2, 'km'], ['formationOffset', 6, 'right, up, forward on the leader'], ['entityCullStatus', 2, 'last screen x'], ['entityScreenY', 2, ''], ['damageProperty', 2, 'AI timers'],
+    ['rvController', 1, '0 AI, 1 local pilot, 2 puppet, 3 script, 4 frozen'], ['rvNetId', 1, 'the layer\'s network id'], ['rvFlags', 2, '32 = a human\'s, on another machine'], ['rvLastWrite', 2, 'frame the layer last wrote it'],
+    ['rvTarget', 1, ''], ['rvAfterburner', 1, ''], ['rvLivery', 1, 'paint ramps']];
+  let off = 0x600; FIELDS.forEach(f => { f.push(off); off += f[1] * 128; });
+  const SECT = [[0x0000, 0x0100, 'header', 'violet', 'null guard, "RVPUPPET" header, the puppet directory: every field\'s offset, checked word by word at load'],
+    [0x0100, 0x0400, 'scalars', 'blue', 'missionStatus, frameCounter, randomSeed, the comm line, victoryPoints, rvNetRole, rvTaunt ...'],
+    [0x0400, 0x0600, 'scratch', 'red', 'the layer\'s: 384 bytes it overwrites with code and runs with CS = DS'],
+    [0x0600, off, 'entities: 128 slots × 37 arrays', 'accent', '22,400 bytes of parallel arrays'],
+    [off, 0x6400, '', 'line', 'spare'],
+    [0x6400, 0x7400, 'mission', 'amber', 'nav points 16 × 77, mission ships 64 × 42, fields 7 × 20']];
+  const strip = $('#abiStrip'), tbody = $('#abiTable tbody'), arr = $('#abiArr');
+  let slot = 5, fi = 6;
+  const hex = v => '0x' + v.toString(16).toUpperCase().padStart(4, '0');
+  const role = s => s === 0 ? 'this machine\'s own pilot' : s <= 31 ? 'ships, capital ships, missiles (1–31)' : s === 32 ? 'the stand-in bolt do_damage names' :
+    s >= 118 && s <= 124 ? 'an asteroid field\'s stand-in (a rock\'s damage source)' : s === 125 ? 'the camera' : s === 127 ? 'scratch' : 'kept by the layout; no ship uses it';
+  FIELDS.forEach((f, i) => {
+    const tr = document.createElement('tr'); tr.innerHTML = `<td>${f[0]}</td><td>${f[1]}</td><td>${hex(f[3])}</td><td></td>`; tr.title = f[2];
+    tr.addEventListener('click', () => { fi = i; draw(); }); tbody.appendChild(tr);
+  });
+  function draw() {
+    const c = COL(); clear(strip); clear(arr);
+    const X = o => 10 + o / 0x7400 * 880;
+    SECT.forEach(([a, b, n, col, what]) => {
+      const r = S('rect', { x: X(a), y: 22, width: X(b) - X(a), height: 46, fill: c[col], 'fill-opacity': col === 'line' ? 0.4 : 0.8, stroke: c.card }, strip);
+      hover(r, `<b>${hex(a)}–${hex(b - 1)} ${n || ''}</b><br>${what}`);
+      if (X(b) - X(a) > 60 && n) S('text', { x: (X(a) + X(b)) / 2, y: 50, 'text-anchor': 'middle', fill: '#fff', 'font-size': 12, 'pointer-events': 'none' }, strip, n);
+    });
+    FIELDS.forEach((f, i) => { if (i === fi) S('rect', { x: X(f[3]), y: 22, width: Math.max(2, X(f[3] + f[1] * 128) - X(f[3])), height: 46, fill: '#fff', 'fill-opacity': 0.35, stroke: c.fg }, strip); });
+    const f = FIELDS[fi], addr = f[3] + slot * f[1];
+    S('path', { d: `M${X(addr)},70 l-6,10 h12 z`, fill: c.red }, strip);
+    S('text', { x: Math.min(Math.max(X(addr), 230), 670), y: 98, 'text-anchor': 'middle', fill: c.fg, 'font-size': 12.5, class: 'mono' }, strip, `${f[0]}[${slot}] = ${hex(f[3])} + ${slot} × ${f[1]} = DS:${hex(addr)}`);
+    [[0, 'start', 0], [0x0600, 'start', 2], [0x6400, 'middle', 0], [0x7400, 'end', 0]].forEach(([o, an, dx]) => S('text', { x: X(o) + dx, y: 15, 'text-anchor': an, fill: c.muted, 'font-size': 10.5, class: 'mono' }, strip, hex(o)));
+    tbody.querySelectorAll('tr').forEach((tr, i) => { tr.className = i === fi ? 'sel' : ''; tr.lastChild.textContent = hex(FIELDS[i][3] + slot * FIELDS[i][1]); });
+    // the field's 128 elements
+    S('text', { x: 0, y: 14, fill: c.fg, 'font-size': 13, 'font-weight': 600 }, arr, `${f[0]}: 128 × ${f[1]} bytes`);
+    S('text', { x: 0, y: 30, fill: c.muted, 'font-size': 11.5 }, arr, f[2] || ' ');
+    for (let s = 0; s < 128; s++) {
+      const x = (s % 16) * 21, y = 42 + Math.floor(s / 16) * 30, on = s === slot;
+      const r = S('rect', { x, y, width: 19, height: 26, rx: 2, fill: on ? c.red : s === 0 ? c.accent : s <= 31 ? c.blue : c.line, 'fill-opacity': on ? 1 : s <= 31 ? 0.55 : 0.35 }, arr);
+      r.style.cursor = 'pointer'; r.addEventListener('click', () => { slot = s; $('#abiSlot').value = s; sync(); });
+      hover(r, `slot ${s} at DS:${hex(f[3] + s * f[1])}<br>${role(s)}`);
+      if (s % 16 === 0) S('text', { x: 330, y: y + 17, 'text-anchor': 'end', fill: c.muted, 'font-size': 9.5, class: 'mono' }, arr, '');
+    }
+    S('text', { x: 0, y: 290, fill: c.muted, 'font-size': 11 }, arr, `${hex(f[3])} … ${hex(f[3] + 128 * f[1] - 1)}`);
+    S('text', { x: 0, y: 306, fill: c.muted, 'font-size': 11 }, arr, 'green: own pilot · blue: ships 1–31 · grey: the rest');
+  }
+  function sync() { $('#abiSlotO').textContent = slot; $('#abiSlotRole').textContent = role(slot); draw(); }
+  $('#abiSlot').addEventListener('input', e => { slot = +e.target.value; sync(); });
+  sync(); redrawers.push(draw);
+});
+
+/* ---------- 10. two machines ---------- */
+safe('puppet', () => {
+  const svg = $('#pupSvg');
+  const host = [['0', 'Schroedinger: the host', 'PLAYER', 0, false], ['1', 'Schroedinger: the guest', 'PUPPET', 1, true], ['2', 'TCS Vigilance', 'AI', 2, false], ['3', 'Nicander', 'AI', 3, false], ['4', 'Nicander', 'AI', 4, false], ['5', 'Agis', 'AI', 5, false]];
+  const guest = [['0', 'Schroedinger: the guest', 'PLAYER', 1, false], ['1', 'Schroedinger: the host', 'PUPPET', 0, true], ['2', 'TCS Vigilance', 'PUPPET', 2, false], ['3', 'Nicander', 'PUPPET', 3, false], ['4', 'Nicander', 'PUPPET', 4, false], ['5', 'Agis', 'PUPPET', 5, false]];
+  const ctlCol = { PLAYER: 'accent', AI: 'blue', PUPPET: 'amber' };
+  let t = 0;
+  function table(x, title, rows, c) {
+    S('text', { x, y: 22, fill: c.fg, 'font-size': 14, 'font-weight': 600 }, svg, title);
+    S('text', { x, y: 42, fill: c.muted, 'font-size': 11 }, svg, 'slot · ship · rvController · net id');
+    rows.forEach(([s, n, ctl, id, human], i) => {
+      const y = 54 + i * 40;
+      S('rect', { x, y, width: 320, height: 32, rx: 5, fill: c.panel, stroke: human ? c.red : c.line, 'stroke-width': human ? 2.5 : 1 }, svg);
+      S('text', { x: x + 10, y: y + 21, fill: c.muted, 'font-size': 12, class: 'mono' }, svg, s);
+      S('text', { x: x + 34, y: y + 21, fill: c.fg, 'font-size': 12.5 }, svg, n);
+      S('rect', { x: x + 206, y: y + 7, width: 72, height: 18, rx: 9, fill: c[ctlCol[ctl]] }, svg);
+      S('text', { x: x + 242, y: y + 20, 'text-anchor': 'middle', fill: '#fff', 'font-size': 10.5, 'font-weight': 600 }, svg, ctl);
+      S('text', { x: x + 296, y: y + 21, fill: c.muted, 'font-size': 12, class: 'mono' }, svg, '#' + id);
+    });
+  }
+  function draw() {
+    const c = COL(); clear(svg);
+    table(10, 'the host\'s game', host, c);
+    table(570, 'the guest\'s game', guest, c);
+    const ax = 340, bx = 560;
+    [[100, '→ every frame: the AI ships\' motion, shots, damage, deaths', c.blue, 1], [190, '← every frame: the guest\'s own ship, its shots and hits', c.accent, -1]].forEach(([y, l, col, dir]) => {
+      S('line', { x1: ax + 6, x2: bx - 6, y1: y, y2: y, stroke: col, 'stroke-width': 2 }, svg);
+      S('path', { d: dir > 0 ? `M${bx - 6},${y} l-9,-5 v10 z` : `M${ax + 6},${y} l9,-5 v10 z`, fill: col }, svg);
+      for (let k = 0; k < 3; k++) {
+        const p = ((t * 0.6 + k / 3) % 1), x = dir > 0 ? ax + 6 + p * (bx - ax - 12) : bx - 6 - p * (bx - ax - 12);
+        S('circle', { cx: x, cy: y, r: 4, fill: col }, svg);
+      }
+      const words = l.split(': ');
+      S('text', { x: (ax + bx) / 2, y: y - 22, 'text-anchor': 'middle', fill: c.fg, 'font-size': 11.5 }, svg, words[0] + ':');
+      S('text', { x: (ax + bx) / 2, y: y - 9, 'text-anchor': 'middle', fill: c.muted, 'font-size': 11 }, svg, words[1]);
+    });
+    S('text', { x: 450, y: 262, 'text-anchor': 'middle', fill: c.muted, 'font-size': 11.5 }, svg, 'matched by network id, not by slot');
+    S('text', { x: 10, y: 312, fill: c.muted, 'font-size': 11.5 }, svg, 'The AI thinks only on the host. Rocks are each game\'s own. A taunt is a byte per slot (rvTaunt), forwarded by the layer.');
+  }
+  animate(svg, dt => { t += dt; draw(); });
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 11. a flight asks for its ships ---------- */
+safe('want', () => {
+  const svg = $('#wantSvg');
+  const B = [[10, 30, 'RV.EXE, at the briefing', 'writes RVWANT.TXT:\n"want GEN SHIP02.RVH …"', 'accent'],
+    [310, 30, 'the page (wc.js)', 'reads RVWANT.TXT\nevery 300 ms', 'blue'],
+    [610, 30, 'fetch, or the Cache API', 'rv/SHIP02.RV.gz,\nkept by SHA-1', 'violet'],
+    [610, 140, 'a Web Worker', 'rvsprites.js makes SHIP02.RVH,\nbyte for byte the C tool\'s', 'amber'],
+    [310, 140, 'DOSBox\'s disk', 'FS.writeFile into /game:\nopened later by its name', 'teal'],
+    [10, 140, 'RV.EXE, at the launch', 'file_to_xms: the set\ninto XMS by straight copy', 'accent']];
+  let t = 0;
+  function draw() {
+    const c = COL(); clear(svg);
+    const ctr = b => [b[0] + 140, b[1] + 34];
+    for (let i = 0; i < B.length - 1; i++) {
+      const [x1, y1] = ctr(B[i]), [x2, y2] = ctr(B[i + 1]);
+      S('line', { x1, y1, x2, y2, stroke: c.line, 'stroke-width': 2 }, svg);
+    }
+    B.forEach(([x, y, title, body, col], i) => {
+      const k = Math.floor(t / 1.1) % B.length, on = i === k;
+      S('rect', { x, y, width: 280, height: 68, rx: 7, fill: c.card, stroke: on ? c[col] : c.line, 'stroke-width': on ? 3 : 1.2 }, svg);
+      S('text', { x: x + 12, y: y + 20, fill: c[col], 'font-size': 12.5, 'font-weight': 600 }, svg, `${i + 1}. ${title}`);
+      body.split('\n').forEach((l, j) => S('text', { x: x + 12, y: y + 39 + j * 15, fill: c.fg, 'font-size': 11.5, class: 'mono' }, svg, l));
+    });
+    const seg = (t / 1.1) % B.length, i = Math.floor(seg), f = seg - i;
+    if (i < B.length - 1) { const [x1, y1] = ctr(B[i]), [x2, y2] = ctr(B[i + 1]); S('circle', { cx: x1 + (x2 - x1) * f, cy: y1 + (y2 - y1) * f, r: 6, fill: c.amber }, svg); }
+    S('text', { x: 10, y: 228, fill: c.muted, 'font-size': 11.5 }, svg, 'The game never waits at the briefing; at the launch it waits (up to 180 s) for what it asked for.');
+  }
+  animate(svg, dt => { t += dt; draw(); });
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 12. builds ---------- */
+safe('builds', () => {
+  const svg = $('#buildSvg');
+  function box(x, y, w, h, title, lines, col, c) {
+    S('rect', { x, y, width: w, height: h, rx: 7, fill: c.card, stroke: c[col], 'stroke-width': 1.6 }, svg);
+    S('text', { x: x + 10, y: y + 19, fill: c[col], 'font-size': 12.5, 'font-weight': 600 }, svg, title);
+    lines.forEach((l, i) => S('text', { x: x + 10, y: y + 36 + i * 14.5, fill: c.fg, 'font-size': 11 }, svg, l));
+  }
+  function arrow(x1, y1, x2, y2, c) { S('path', { d: `M${x1},${y1} C${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${y2} ${x2 - 8},${y2}`, fill: 'none', stroke: c.muted, 'stroke-width': 1.4 }, svg); S('path', { d: `M${x2},${y2} l-9,-4.5 v9 z`, fill: c.muted }, svg); }
+  function draw() {
+    const c = COL(); clear(svg);
+    box(10, 92, 200, 116, 'one source tree', ['src/: C89 + NASM', 'logic.c: the play, by hand', 'abi/rvabi.def: the interface', 'data/: ships, missions, lines', 'tools/: art, sound, packing'], 'accent', c);
+    box(290, 10, 290, 86, 'DOS: Open Watcom + NASM', ['RV.EXE: the game (no heap, no tests)', 'RVT.EXE: + demos, benchmarks, self-tests', 'RVP.EXE: + play tests, the asm\'s C twins'], 'blue', c);
+    box(290, 108, 290, 86, 'host: gcc / clang, 32-bit', ['rvsim: the logic alone, UBSan by default', 'play tests: the same file as RVP.EXE\'s', 'twins, kernels, the card\'s pixel code'], 'violet', c);
+    box(290, 206, 290, 86, 'browser and desktop', ['/rv: the game in wasm, hle.c answers DOS', 'desktop rv-core: seccomp + bubblewrap', 'rvsprites.js: the sets, byte-identical'], 'amber', c);
+    box(660, 10, 230, 86, 'runs in', ['real DOS, stock DOSBox', 'our DOSBox: + 2dfx-Voonew', '+ the two-player layer'], 'blue', c);
+    box(660, 108, 230, 86, 'checks', ['hashes: host = DOS', 'twins: asm = C', 'screenshots: native = DOSBox'], 'violet', c);
+    box(660, 206, 230, 86, 'the page', ['/dosbox: DOSBox in wasm', '/rv: the game itself', 'reproducible desktop build'], 'amber', c);
+    arrow(210, 150, 290, 53, c); arrow(210, 150, 290, 151, c); arrow(210, 150, 290, 249, c);
+    arrow(580, 53, 660, 53, c); arrow(580, 151, 660, 151, c); arrow(580, 249, 660, 249, c);
+  }
+  draw(); redrawers.push(draw);
+});
+
+/* ---------- 13. one test, two machines ---------- */
+safe('tests', () => {
+  const svg = $('#testSvg');
+  const T = [['M8.62', 'a held wave keeps the mission undone'], ['M8.61', 'goals score the old game\'s points'], ['M8.57', 'the transport jumps in on its timer'], ['M8.55', 'a field\'s nav point is its middle'], ['M8.23', 'points against the pass mark'], ['M7.10', 'a missile\'s blast'], ['M10.11', 'a guest\'s taunt reaches the host\'s AI']];
+  let t = 0;
+  const hashCol = (s, i) => { let h = 2166136261; for (const ch of s + i) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return `hsl(${(h >>> 0) % 360},55%,52%)`; };
+  function draw() {
+    const c = COL(); clear(svg);
+    const k = Math.floor(t / 2.4) % T.length, f = (t % 2.4) / 2.4, [id, name] = T[k];
+    S('rect', { x: 10, y: 95, width: 212, height: 70, rx: 7, fill: c.card, stroke: c.accent, 'stroke-width': 1.6 }, svg);
+    S('text', { x: 22, y: 120, fill: c.accent, 'font-size': 13, 'font-weight': 600 }, svg, 'tests/play/playtest.c');
+    S('text', { x: 22, y: 140, fill: c.fg, 'font-size': 11.5, class: 'mono' }, svg, id);
+    S('text', { x: 22, y: 156, fill: c.muted, 'font-size': 11 }, svg, name.length > 34 ? name.slice(0, 33) + '…' : name);
+    [[40, 'host: gcc, 32-bit, UBSan', 'blue'], [170, 'DOS: RVP.EXE in DOSBox', 'amber']].forEach(([y, l, col], j) => {
+      S('path', { d: `M222,130 C252,130 252,${y + 30} 280,${y + 30}`, fill: 'none', stroke: c.muted, 'stroke-width': 1.4 }, svg);
+      S('rect', { x: 280, y, width: 250, height: 60, rx: 7, fill: c.card, stroke: c[col], 'stroke-width': 1.6 }, svg);
+      S('text', { x: 292, y: y + 22, fill: c[col], 'font-size': 12.5, 'font-weight': 600 }, svg, l);
+      const steps = Math.min(1, f * 1.6);
+      S('rect', { x: 292, y: y + 34, width: 226, height: 10, rx: 5, fill: c.line }, svg);
+      S('rect', { x: 292, y: y + 34, width: 226 * steps, height: 10, rx: 5, fill: c[col] }, svg);
+      S('path', { d: `M530,${y + 30} C580,${y + 30} 580,130 610,130`, fill: 'none', stroke: c.muted, 'stroke-width': 1.4 }, svg);
+      if (f > 0.62) for (let b = 0; b < 8; b++) S('rect', { x: 640 + b * 22, y: y + 18, width: 18, height: 18, rx: 2, fill: hashCol(id, b) }, svg);
+    });
+    S('text', { x: 640, y: 30, fill: c.muted, 'font-size': 11.5 }, svg, 'the world\'s hash (shown as colour)');
+    if (f > 0.75) {
+      S('text', { x: 815, y: 135, fill: c.accent, 'font-size': 26, 'font-weight': 700 }, svg, '=');
+      S('text', { x: 640, y: 248, fill: c.fg, 'font-size': 12 }, svg, 'equal: the logic is the same in both. If not, --steps finds the first step and array that differ.');
+    }
+  }
+  animate(svg, dt => { t += dt; draw(); });
+  draw(); redrawers.push(draw);
+});
+</script>
+</body>
+</html>
