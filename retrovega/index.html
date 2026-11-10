@@ -144,7 +144,7 @@ footer { margin-top: 70px; border-top: 1px solid var(--line); padding-top: 16px;
     <a href="#xms">4 · XMS, the blitter DOS never had</a>
     <a href="#lightfield">5 · A lightfield of ships</a>
     <a href="#paths">6 · Copy, scale, turn</a>
-    <a href="#gx">7 · 2dfx-Voonew, the imaginary card</a>
+    <a href="#gx">7 · RVGX, the imaginary card</a>
     <a href="#asm">8 · Bolts, flames, fire</a>
     <a href="#rocks">9 · Asteroid fields</a>
     <a href="#abi">10 · Built to be puppeted</a>
@@ -442,9 +442,9 @@ footer { margin-top: 70px; border-top: 1px solid var(--line); padding-top: 16px;
 </figure>
 
 <!-- ============================================================ 7 -->
-<h2 id="gx"><span class="num">07</span>2dfx-Voonew: a graphics card that exists only in our emulator</h2>
+<h2 id="gx"><span class="num">07</span>RVGX: a graphics card that exists only in our emulator</h2>
 <ul>
-  <li><b>2dfx-Voonew</b> (invented 2026-11-01) is an optional "accelerator" that draws a ship turned and scaled at full resolution, from pictures it fetches by itself. Its interrupt interface is called RVGX.</li>
+  <li><b>RVGX</b> (invented 2026-11-01) is an optional "accelerator" that draws a ship turned and scaled at full resolution, from pictures it fetches by itself.</li>
   <li>It takes over exactly the two jobs DOS can least afford, <b>rotation and scaling</b>. The game says how much (roll, scale, mirror) and where (x, y, frame buffer, stride, clip rows and columns). The card does the inverse mapping for every pixel, in host code.</li>
   <li>It must be harmless where it does not exist, on real DOS and stock DOSBox ("spoiler: this hardware is not installed except in DOSBox"):
     <ul>
@@ -467,7 +467,7 @@ footer { margin-top: 70px; border-top: 1px solid var(--line); padding-top: 16px;
     <img src="img/gx-blocks.png" width="640" height="400" alt="Cockpit view with the ship drawn as 2 by 2 blocks by the game alone">
     <div class="over"><img src="img/gx-card.png" alt="The same view with the ship drawn pixel by pixel by the accelerator"></div>
     <div class="bar"></div><div class="knob">⇔</div>
-    <span class="lab" style="left:8px">2DFX-VOONEW</span><span class="lab" style="right:8px">DOS ALONE · 2×2 BLOCKS</span>
+    <span class="lab" style="left:8px">RVGX CARD</span><span class="lab" style="right:8px">DOS ALONE · 2×2 BLOCKS</span>
   </div>
   <div class="controls" style="margin-top:12px">
     <button class="small" id="gxFlip">` flip</button><span id="gxFlipLab" class="readout" style="padding:3px 8px">card</span>
@@ -501,7 +501,7 @@ footer { margin-top: 70px; border-top: 1px solid var(--line); padding-top: 16px;
 <figure class="fig" id="fig-rows">
   <div class="tag"><span class="live">● LIVE</span><span class="title">One ship, row by row</span><span>a real Schroedinger view · pick who draws it</span></div>
   <div class="controls">
-    <span class="seg" id="rowsMode"><button aria-pressed="true" data-v="dos">DOS alone</button><button aria-pressed="false" data-v="card">2dfx-Voonew</button><button aria-pressed="false" data-v="fall">2dfx-Voonew, still loading</button></span>
+    <span class="seg" id="rowsMode"><button aria-pressed="true" data-v="dos">DOS alone</button><button aria-pressed="false" data-v="card">RVGX card</button><button aria-pressed="false" data-v="fall">RVGX, still loading</button></span>
     <button class="small" id="rowsReplay">↻ replay</button>
     <label><input type="checkbox" id="rowsTint" checked> tint copied rows and sampled edges</label>
   </div>
@@ -919,7 +919,7 @@ safe('paths', () => {
 /* ---------- 6. what one turned ship costs ---------- */
 safe('turncost', () => {
   const svg = $('#turnSvg'), FRAME = 1.67e6, D0 = 4000, D1 = 350;
-  const P = [['DOS: every pixel turned and scaled', 16, 'red'], ['DOS: 2×2 blocks, rows copied (the game)', 4.6, 'amber'], ['a pre-rendered copy: no free roll', 1.7, 'blue'], ['2dfx-Voonew: one int 2Fh', 0, 'accent']];
+  const P = [['DOS: every pixel turned and scaled', 16, 'red'], ['DOS: 2×2 blocks, rows copied (the game)', 4.6, 'amber'], ['a pre-rendered copy: no free roll', 1.7, 'blue'], ['the RVGX card: one int 2Fh', 0, 'accent']];
   let hx = -1;
   const pix = d => viewPx.n * (2500 / d) ** 2;
   const cyc = (d, k) => k ? pix(d) * k : 60;
@@ -1422,7 +1422,7 @@ safe('rows', () => {
       const yy = st.rowsDone * PXS; ctx.fillStyle = '#f0c04a'; ctx.fillRect(GUT, yy, OW * PXS, 2);
       const r = rows[st.rowsDone]; if (r) { ctx.fillStyle = '#f0c04a'; ctx.fillText(r.type === 'copied' ? 'copy ↓' : r.type === 'drawn' ? 'draw' : '', 2, yy + 9); }
     }
-    const label = { dense: 'DOS: the dense copy, from the slab or XMS', fill: 'filling the block …', int: 'int 2Fh, AX = E720h', card: 'drawn by 2dfx-Voonew: every pixel, no emulated time',
+    const label = { dense: 'DOS: the dense copy, from the slab or XMS', fill: 'filling the block …', int: 'int 2Fh, AX = E720h', card: 'drawn by RVGX: every pixel, no emulated time',
       no: 'result −3: the picture is still loading', rows: mode === 'fall' ? 'the same frame: DOS draws it after all' : 'DOS: row by row', over: mode === 'card' ? '' : 'done' }[st.phase];
     ctx.fillStyle = st.phase === 'no' ? '#ef6a4a' : '#dfe7df'; ctx.font = '600 14px ' + cssv('--display');
     ctx.fillText(label || '', GUT + 8, H - 12);
@@ -1459,7 +1459,7 @@ safe('rows', () => {
 /* ---------- 7. one ship through the card ---------- */
 safe('gxseq', () => {
   const svg = $('#gxSeq');
-  const lanes = [['RV.EXE (DOS)', 95], ['2dfx-Voonew (in DOSBox)', 345], ['the page (wc.js)', 590], ['site · Cache API', 805]];
+  const lanes = [['RV.EXE (DOS)', 95], ['RVGX card (in DOSBox)', 345], ['the page (wc.js)', 590], ['site · Cache API', 805]];
   const steps = [
     [0, 1, 'E700h  BX=\'RV\' CX=\'GX\': is there a card?'],
     [1, 0, 'AL=FFh  BX=\'gx\'  CH.CL = 1.2', 'ret'],
@@ -1926,7 +1926,7 @@ safe('builds', () => {
     box(290, 10, 290, 86, 'DOS: Open Watcom + NASM', ['RV.EXE: the game (no heap, no tests)', 'RVT.EXE: + demos, benchmarks, self-tests', 'RVP.EXE: + play tests, the asm\'s C twins'], 'blue', c);
     box(290, 108, 290, 86, 'host: gcc / clang, 32-bit', ['rvsim: the logic alone, UBSan by default', 'play tests: the same file as RVP.EXE\'s', 'twins, kernels, the card\'s pixel code'], 'violet', c);
     box(290, 206, 290, 86, 'browser and desktop', ['/rv: the game in wasm, hle.c answers DOS', 'desktop rv-core: seccomp + bubblewrap', 'rvsprites.js: the sets, byte-identical'], 'amber', c);
-    box(660, 10, 230, 86, 'runs in', ['real DOS, stock DOSBox', 'our DOSBox: + 2dfx-Voonew', '+ the two-player layer'], 'blue', c);
+    box(660, 10, 230, 86, 'runs in', ['real DOS, stock DOSBox', 'our DOSBox: + RVGX card', '+ the two-player layer'], 'blue', c);
     box(660, 108, 230, 86, 'checks', ['hashes: host = DOS', 'twins: asm = C', 'screenshots: native = DOSBox'], 'violet', c);
     box(660, 206, 230, 86, 'the page', ['/dosbox: DOSBox in wasm', '/rv: the game itself', 'reproducible desktop build'], 'amber', c);
     arrow(210, 150, 290, 53, c); arrow(210, 150, 290, 151, c); arrow(210, 150, 290, 249, c);
