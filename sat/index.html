@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Little Grey Cells: The Machine</title>
+<meta name="description" content="Grammar, SAT vocabulary and sharp reading, powered by Agatha Christie and a chain-reaction machine you build with right answers.">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app view-study" id="app">
+  <section class="stage" id="stage">
+    <canvas id="world" aria-label="A chain-reaction machine of dominoes, marbles and toys that grows as you answer correctly. Pull back on the glowing marble and let go to set it off."></canvas>
+
+    <div class="hud">
+      <div class="hud-left">
+        <div class="chip"><span class="lbl">Machine</span> <b id="caseNo">1</b></div>
+        <div class="chip"><span class="lbl">Score</span> <b id="score">0</b></div>
+        <button id="backStudy" class="chip backstudy" type="button" hidden>📚 Back to questions</button>
+      </div>
+      <div class="hud-mid">
+        <div id="pieces" class="pieces" role="img"></div>
+        <div id="chain" class="chain" aria-hidden="true"><b id="chainN">0</b><span>dominoes</span></div>
+      </div>
+      <div class="hud-right">
+        <button id="mute" class="icon" title="Sound on/off" aria-label="Toggle sound">🔊</button>
+        <button id="fast" class="icon" title="Fast forward" aria-label="Fast forward" aria-pressed="false">⏩</button>
+        <button id="zin" class="icon" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="zout" class="icon" title="Zoom out" aria-label="Zoom out">−</button>
+        <button id="fit" class="icon" title="See the whole machine" aria-label="See the whole machine"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
+        <button id="follow" class="icon" title="Follow the action" aria-label="Follow the action"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/></svg></button>
+      </div>
+    </div>
+
+    <div id="banner" class="banner" role="status" aria-live="polite"><div id="bannerBig" class="big"></div><div id="bannerSmall" class="small"></div></div>
+    <div id="announce" class="announce" role="status" aria-live="polite"><b id="announceTitle"></b><span id="announceBlurb"></span></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="suspects" class="suspects" aria-label="The suspects"></div>
+
+    <div id="breakBar" class="breakbar" role="status">
+      <div class="brow"><span id="breakIcon" aria-hidden="true"></span> <b id="breakName"></b> <span id="breakHow" class="bhow"></span> <span id="breakStatus" class="bstat"></span>
+        <span class="bright"><b id="breakTime"></b> <button id="breakEnd" class="linkish">End break</button></span></div>
+      <div class="bbar"><span id="breakFill"></span></div>
+    </div>
+
+    <div class="dock">
+      <div id="hint" class="hint"></div>
+      <div id="miniFocus" class="minifocus" aria-hidden="true">
+        <span class="mf">🎯 Focus <b>0</b></span>
+        <span class="mbar"><span id="miniFill"></span></span>
+        <span id="miniText" class="mt"></span>
+        <span id="miniFreeze" class="mz" hidden></span>
+      </div>
+      <div id="streak" class="streak" aria-label="Streak of correct answers">
+        <span class="sn"><b id="streakN">0</b><i>in a row</i></span>
+        <span class="sbar"><span id="streakFill" class="fill"></span></span>
+        <span class="stext"><b id="streakName">Marble</b><i id="streakNext"></i></span>
+      </div>
+    </div>
+
+    <div id="finale" class="finale" role="dialog" aria-label="Machine complete">
+      <div class="fincard">
+        <div id="finTitle" class="fintitle">CASE CLOSED</div>
+        <div id="finScore" class="finscore"></div>
+        <div id="finStats" class="finstats"></div>
+        <div id="finCulprit" class="finculprit" hidden></div>
+        <p id="finSolution" class="finsolution" hidden></p>
+        <button id="finaleNext" class="primary">Build the next machine →</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div id="rollBox" class="rollbox" role="status" aria-live="polite" hidden><div id="rollHead" class="rhead"></div><div id="rollResult" class="rresult"></div></div>
+    <header>
+      <div class="titlerow">
+        <h1>Little Grey Cells</h1>
+        <span id="rank" class="rank">Constable</span>
+      </div>
+      <p class="sub">Every right answer adds a toy to the machine. Every flick sets it off.</p>
+    </header>
+
+    <!-- phone only: the machine is on its own tab, so this keeps score on the questions tab -->
+    <div id="studybar" class="studybar">
+      <div class="statusline"><div id="statusText" role="status"></div><button id="playNow" class="playnow" type="button" hidden>Play ▶</button></div>
+    </div>
+    <div id="studynote" class="studynote" role="status" aria-live="polite"></div>
+
+    <div id="coldbar" class="coldbar">
+      <span class="folder" aria-hidden="true">🗂</span>
+      <div class="coldtext"><b><span id="coldN">0</span> <span id="coldWord">cold cases</span> open</b> · <span id="closedN">0</span> closed<small id="coldMsg"></small></div>
+    </div>
+
+    <section id="focus" class="focus" aria-label="Focus progress">
+      <div class="fhead"><b>🎯 Focus: <span id="focusN">0</span></b><span>A right answer adds 1. A miss takes off ⅓, so guessing gets you nowhere. Playing costs ¼, and a freeze covers three plays.</span></div>
+      <div id="fb-bonus" class="frow t-bonus"><span class="fname">Big bonus</span><span class="fbar"><span class="ffill"></span></span><span class="fcount"></span><span class="fodds">33%</span></div>
+      <div id="fb-rare" class="frow t-rare"><span class="fname">Rare</span><span class="fbar"><span class="ffill"></span></span><span class="fcount"></span><span class="fodds">25%</span></div>
+      <div id="fb-ultra" class="frow t-ultra"><span class="fname">Ultra rare</span><span class="fbar"><span class="ffill"></span></span><span class="fcount"></span><span class="fodds">10%</span></div>
+      <div id="freezes" class="freezes"></div>
+    </section>
+
+    <section class="chest mystery" aria-label="The mystery behind this machine">
+      <button id="mysteryToggle" class="chead" type="button" aria-expanded="false" aria-controls="mysteryBody"><b>🔎 <span id="mysteryTitle"></span></b> <span id="mysteryCount"></span><i class="chevron" aria-hidden="true"></i></button>
+      <div id="mysteryBody" hidden>
+        <p id="mysteryBrief" class="mbrief"></p>
+        <div id="mysterySuspects" class="msuspects"></div>
+        <ol id="mysteryClues" class="mclues"></ol>
+        <p id="mysterySolved" class="mbrief msolved" hidden></p>
+        <p id="storyNext" class="mbrief storynext"></p>
+      </div>
+    </section>
+
+    <section id="dossier" class="chest mystery dossier" aria-label="The fire inquiry" hidden>
+      <button id="dossierToggle" class="chead" type="button" aria-expanded="false" aria-controls="dossierBody"><b>🔥 <span id="dossierTitle"></span></b> <span id="dossierCount"></span><i class="chevron" aria-hidden="true"></i></button>
+      <div id="dossierBody" hidden>
+        <p id="dossierIntro" class="mbrief"></p>
+        <div id="dossierChapters"></div>
+        <p id="dossierSolution" class="mbrief msolved" hidden></p>
+      </div>
+    </section>
+
+    <section id="sectionStrip" class="chest mystery sectionstrip" aria-label="The Water Section, a test section" hidden>
+      <button id="sectionToggle" class="chead" type="button" aria-expanded="false" aria-controls="sectionBody"><b>🌊 Water Section</b> <span id="sectionCount"></span><i class="chevron" aria-hidden="true"></i></button>
+      <div id="sectionBody" hidden>
+        <p class="mbrief">A test section like the real one: 27 questions, ten on words in context and seventeen on grammar and punctuation. No feedback until the end, then your score, what you missed and why.</p>
+        <p class="mbrief">There is a clock, but it only counts up, and the suggested finish is just a guide. Nothing happens if you go over: the score, your Focus and your rewards do not depend on time at all.</p>
+        <p id="sectionLast" class="mbrief storynext"></p>
+        <button id="sectionGo" class="primary" type="button">Start a section</button>
+      </div>
+    </section>
+
+    <section class="chest" aria-label="Chest of saved items">
+      <button id="chestToggle" class="chead" type="button" aria-expanded="false" aria-controls="chestBody"><b>Chest</b> <span id="chestCount"></span><i class="chevron" aria-hidden="true"></i></button>
+      <div id="chestBody" hidden>
+        <div id="chestTiles" class="tiles"></div>
+        <div id="chestInfo" class="chestinfo" hidden>
+          <b id="ciName"></b>
+          <p id="ciBlurb"></p>
+          <div class="cirow"><button id="ciGo" class="primary"></button><span id="ciCost"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <article id="card" class="card">
+      <div id="coldStamp" class="coldstamp" hidden></div>
+      <div class="cardhead"><span id="qtag" class="tag"></span><h2 id="qtitle"></h2></div>
+      <p id="qprompt" class="prompt"></p>
+      <div id="qbody" class="qbody"></div>
+      <div class="actions">
+        <button id="check" class="primary" disabled>Check answer</button>
+        <button id="next" class="primary" hidden>Next case →</button>
+      </div>
+      <div id="feedback" hidden>
+        <p id="verdict" class="verdict"></p>
+        <p id="coldNote" class="coldnote" hidden></p>
+        <p id="rule" class="rulebox"></p>
+        <p id="fixedline" class="fixed"></p>
+        <p id="src" class="src"></p>
+      </div>
+    </article>
+    <article id="sect" class="card sect" aria-label="Test section" hidden>
+      <div class="sbar"><b>🌊 Water<span class="wl"> Section</span></b> <span id="sPos" class="spos"></span><button id="sLeave" class="linkish" type="button">Save<span class="wl"> and leave</span></button></div>
+      <div id="sClockBox" class="sclockbox">
+        <span class="sclock">⏱ <b id="sClock">0:00</b> <i id="sSuggest"></i></span>
+        <span class="sbarline" aria-hidden="true"><span id="sFill"></span></span>
+        <button id="sHide" class="linkish" type="button">Hide clock</button>
+      </div>
+      <p id="sPace" class="space" role="status"></p>
+      <div id="sDots" class="sdots" aria-label="Questions in this section"></div>
+      <p id="sPrompt" class="prompt"></p>
+      <div id="sBody" class="qbody"></div>
+      <div id="sReview" class="sreview" hidden></div>
+      <div id="sResults" class="sresults" hidden></div>
+      <div id="sActions" class="actions">
+        <button id="sBack" class="secondary" type="button">← Back</button>
+        <button id="sNext" class="primary" type="button">Next →</button>
+      </div>
+    </article>
+    <div id="meters" class="meters" aria-label="Skill progress"></div>
+    <footer>Quotations from public-domain Agatha Christie and Arthur Conan Doyle texts via Project Gutenberg. Your progress and misses are saved only in this browser.
+      <button id="reset" class="linkish">Reset progress</button></footer>
+  </section>
+
+  <nav id="tabs" class="tabs" aria-label="Questions or machine">
+    <button id="tabStudy" class="tab" type="button" aria-pressed="true"><span aria-hidden="true">📚</span> Questions</button>
+    <button id="tabMachine" class="tab" type="button" aria-pressed="false"><span aria-hidden="true">🎲</span> Machine <i id="tabBadge" class="badge" title="You have earned a flick" hidden></i></button>
+  </nav>
+</div>
+<script src="js/physics.js"></script>
+<script src="js/track.js"></script>
+<script src="js/rewards.js"></script>
+<script src="js/progress.js"></script>
+<script src="js/mystery.js"></script>
+<script src="js/sand.js"></script>
+<script src="js/playground.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/render.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/quiz.js"></script>
+<script src="js/section.js"></script>
+<script src="data/questions.js"></script>
+<script src="data/questions-set2.js"></script>
+<script src="data/questions-set3.js"></script>
+<script src="data/questions-set4.js"></script>
+<script src="data/questions-set5.js"></script>
+<script src="data/questions-set6.js"></script>
+<script src="data/mysteries.js"></script>
+<script src="data/fire-story.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+{
+ "version": 1,
+ "anchor": "GAMEDAT/SERIES.S02",
+ "exe": {
+  "source": "SO2.EXE",
+  "target": "SO3.EXE",
+  "sha256": "f9b53260a85340416febc68dd10dc0efb5570a5f97c872f3425e6f87e65207ae",
+  "patches": [
+   {
+    "what": "the data-file number, mov word [cb16], 2",
+    "find": "c70616cb0200",
+    "replace": "c70616cb0300",
+    "count": 5
+   },
+   {
+    "what": "the saved game's name",
+    "find": "7361766567616d652e736f32",
+    "replace": "7361766567616d652e736f33",
+    "count": 1
+   },
+   {
+    "what": "the game number of a resumed story",
+    "find": "c746fa02009a2f0088048b46fa5ec9cb",
+    "replace": "c746fa03009a2f0088048b46fa5ec9cb",
+    "count": 1
+   }
+  ]
+ },
+ "exes": [
+  {
+   "source": "SO2.EXE",
+   "target": "SO3.EXE",
+   "sha256": "f9b53260a85340416febc68dd10dc0efb5570a5f97c872f3425e6f87e65207ae",
+   "patches": [
+    {
+     "what": "the data-file number, mov word [cb16], 2",
+     "find": "c70616cb0200",
+     "replace": "c70616cb0300",
+     "count": 5
+    },
+    {
+     "what": "the saved game's name",
+     "find": "7361766567616d652e736f32",
+     "replace": "7361766567616d652e736f33",
+     "count": 1
+    },
+    {
+     "what": "the game number of a resumed story",
+     "find": "c746fa02009a2f0088048b46fa5ec9cb",
+     "replace": "c746fa03009a2f0088048b46fa5ec9cb",
+     "count": 1
+    }
+   ]
+  }
+ ],
+ "anchorSize": 147124,
+ "keyCheck": "eab025bd0f3665e2d8198112a98c61c56e45c9941aa73c417cce72c946b9ac09",
+ "iv": "4d7b1d7fafe70999c63fbae9",
+ "files": [
+  {
+   "path": "GAMEDAT/ALTSHIPS.003",
+   "size": 4701
+  },
+  {
+   "path": "GAMEDAT/CAMPAIGN.S03",
+   "size": 19832
+  },
+  {
+   "path": "GAMEDAT/DOORS.V45",
+   "size": 180053
+  },
+  {
+   "path": "GAMEDAT/GAMEFLOW.S03",
+   "size": 4580
+  },
+  {
+   "path": "GAMEDAT/INCIDENT.S03",
+   "size": 85524
+  },
+  {
+   "path": "GAMEDAT/INTELSHP.001",
+   "size": 89
+  },
+  {
+   "path": "GAMEDAT/INTELSHP.045",
+   "size": 89
+  },
+  {
+   "path": "GAMEDAT/LAND.V45",
+   "size": 6610
+  },
+  {
+   "path": "GAMEDAT/LAND.V46",
+   "size": 6251
+  },
+  {
+   "path": "GAMEDAT/LAND.V47",
+   "size": 5212
+  },
+  {
+   "path": "GAMEDAT/LAND.V48",
+   "size": 6445
+  },
+  {
+   "path": "GAMEDAT/LAND.V49",
+   "size": 7465
+  },
+  {
+   "path": "GAMEDAT/LAND.V50",
+   "size": 5902
+  },
+  {
+   "path": "GAMEDAT/LAND.V51",
+   "size": 5185
+  },
+  {
+   "path": "GAMEDAT/LAUNCH.V45",
+   "size": 2641
+  },
+  {
+   "path": "GAMEDAT/LAUNCH.V46",
+   "size": 2036
+  },
+  {
+   "path": "GAMEDAT/LAUNCH.V47",
+   "size": 2386
+  },
+  {
+   "path": "GAMEDAT/LAUNCH.V48",
+   "size": 2135
+  },
+  {
+   "path": "GAMEDAT/LAUNCH.V49",
+   "size": 2896
+  },
+  {
+   "path": "GAMEDAT/MODULE.003",
+   "size": 177824
+  },
+  {
+   "path": "GAMEDAT/PCSHIP.V45",
+   "size": 115818
+  },
+  {
+   "path": "GAMEDAT/PEOPLE.V46",
+   "size": 43061
+  },
+  {
+   "path": "GAMEDAT/PEOPLE.V47",
+   "size": 33016
+  },
+  {
+   "path": "GAMEDAT/PLANETS.V03",
+   "size": 20493
+  },
+  {
+   "path": "GAMEDAT/SECTOR.003",
+   "size": 5
+  },
+  {
+   "path": "GAMEDAT/SERIES.S03",
+   "size": 151116
+  },
+  {
+   "path": "GAMEDAT/SHIP.V29",
+   "size": 144694
+  },
+  {
+   "path": "GAMEDAT/SHIP.V45",
+   "size": 80015
+  },
+  {
+   "path": "GAMEDAT/STARTGLB.003",
+   "size": 1538
+  },
+  {
+   "path": "GAMEDAT/TEMPGLOB.003",
+   "size": 1538
+  },
+  {
+   "path": "GAMEDAT/WORMHOLE.V45",
+   "size": 6243
+  },
+  {
+   "path": "GAMEDAT/WORMHOLE.V46",
+   "size": 8163
+  }
+ ],
+ "bytes": 1134406
+}

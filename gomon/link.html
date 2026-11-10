@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoMon — link your OpenAI key</title>
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    body { display: block; padding: 2rem 1rem; max-width: 34rem; margin: 0 auto; }
+    .code-big { font-size: 3rem; letter-spacing: .35em; text-align: center; padding: 1rem;
+                background: #11152a; border-radius: 12px; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Link your OpenAI key to GoMon</h1>
+  <p class="muted">Paste your OpenAI API key below. You'll get a short one-time code —
+  type that code into GoMon on your phone (Settings → Claim). The key is held in the
+  server's memory for a few minutes at most, is deleted the moment it's claimed, and is
+  never written to disk.</p>
+  <div class="row">
+    <input id="key" class="input" type="password" placeholder="sk-…">
+    <button id="go" class="btn primary">Get code</button>
+  </div>
+  <div id="out"></div>
+  <script>
+    document.getElementById("go").onclick = async () => {
+      const key = document.getElementById("key").value.trim();
+      const out = document.getElementById("out");
+      if (key.length < 20) { out.textContent = "That doesn't look like an API key."; return; }
+      try {
+        const res = await fetch("api/link", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ secret: key }),
+        });
+        if (!res.ok) throw new Error("server said " + res.status);
+        const { code, ttlSeconds } = await res.json();
+        out.innerHTML = "";
+        const big = document.createElement("div");
+        big.className = "code-big";
+        big.textContent = code;
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "Enter this code in GoMon on your phone within " +
+          Math.round(ttlSeconds / 60) + " minutes. It works exactly once. Or open: " +
+          location.origin + location.pathname.replace(/link\.html$/, "") + "?link=" + code;
+        out.append(big, p);
+        document.getElementById("key").value = "";
+      } catch (err) {
+        out.textContent = "Failed: " + err.message;
+      }
+    };
+  </script>
+</body>
+</html>

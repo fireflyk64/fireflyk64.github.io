@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- static fallback only — src/ui/brand.ts is the source of truth and
+         main.ts overwrites this at boot -->
+    <title>Mantle of Ophion: Battle across Andromeda</title>
+    <script>
+      // Static hosts can't send COOP/COEP headers; a service worker adds them
+      // so OPFS persistence works. One reload brings the page under its scope.
+      if (!crossOriginIsolated && 'serviceWorker' in navigator && location.protocol === 'https:') {
+        navigator.serviceWorker.register('./coi-sw.js').then(() => {
+          if (!sessionStorage.getItem('coi-reloaded')) {
+            sessionStorage.setItem('coi-reloaded', '1');
+            navigator.serviceWorker.ready.then(() => location.reload());
+          }
+        }).catch(() => {});
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-Z8-J4jDB.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/Geometry-BP8hWXha.js">
+    <link rel="modulepreload" crossorigin href="./assets/RenderTargetSystem-B4ydElcM.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-CbRGICpG.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
