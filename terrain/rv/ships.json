@@ -1,0 +1,239 @@
+{
+ "build": "7f3cb6ce",
+ "ships": {
+  "SHIP00": {
+   "file": "rv/SHIP00.RV.gz",
+   "bytes": 3163522,
+   "sha1": "92c8ed9ea9addcac14fc6c1f5cd7fc4f63091aa8",
+   "name": "Schroedinger"
+  },
+  "SHIP01": {
+   "file": "rv/SHIP01.RV.gz",
+   "bytes": 3900751,
+   "sha1": "d8cd7e89d43aad0fefcb6dfde3fd719f6381861f",
+   "name": "Franklin"
+  },
+  "SHIP02": {
+   "file": "rv/SHIP02.RV.gz",
+   "bytes": 4416835,
+   "sha1": "3e1ba4e7bb7fb2aaa04fdf99ad74214874374463",
+   "name": "Gawain"
+  },
+  "SHIP03": {
+   "file": "rv/SHIP03.RV.gz",
+   "bytes": 3750487,
+   "sha1": "da18ddf710e7dd532f930263b4dbda299b6b5dc0",
+   "name": "Redeemer"
+  },
+  "SHIP04": {
+   "file": "rv/SHIP04.RV.gz",
+   "bytes": 8405149,
+   "sha1": "72c8b8013aa3b4b8fb95617a8d2e637d0b24fd8b",
+   "name": "Pacifier"
+  },
+  "SHIP05": {
+   "file": "rv/SHIP05.RV.gz",
+   "bytes": 6197009,
+   "sha1": "a5921ac53c1eca0037cabb203ec2cc10946c3b90",
+   "name": "Lancelot"
+  },
+  "SHIP06": {
+   "file": "rv/SHIP06.RV.gz",
+   "bytes": 6081558,
+   "sha1": "95e11c911068c4124c65f005f371b0bf405a6d40",
+   "name": "Progeny"
+  },
+  "SHIP08": {
+   "file": "rv/SHIP08.RV.gz",
+   "bytes": 3503222,
+   "sha1": "7141ab8056d3d7db350c2e021d8575d268d684d9",
+   "name": "Nicander"
+  },
+  "SHIP09": {
+   "file": "rv/SHIP09.RV.gz",
+   "bytes": 4201683,
+   "sha1": "77ab1bd13c250dcd6b0cf5ae05f320e5f1db2ca3",
+   "name": "Ariston"
+  },
+  "SHIP0A": {
+   "file": "rv/SHIP0A.RV.gz",
+   "bytes": 6511281,
+   "sha1": "46d2068fdc46c46572549afd39bf104e57c7fa20",
+   "name": "Areus"
+  },
+  "SHIP0B": {
+   "file": "rv/SHIP0B.RV.gz",
+   "bytes": 3840011,
+   "sha1": "1636a2a0d9db01a9d8144e35afc360e392a6abe5",
+   "name": "Agis"
+  },
+  "SHIP0C": {
+   "file": "rv/SHIP0C.RV.gz",
+   "bytes": 7852829,
+   "sha1": "7e0f74d4422944a07031d8ff172d74f3d4f1c8ce",
+   "name": "Cleomenes"
+  },
+  "SHIP0D": {
+   "file": "rv/SHIP0D.RV.gz",
+   "bytes": 1204582,
+   "sha1": "9bcb4f3ac0f5801569a924a7ab62159a32eae33e",
+   "name": "Convolution"
+  },
+  "SHIP10": {
+   "file": "rv/SHIP10.RV.gz",
+   "bytes": 2595330,
+   "sha1": "067ae2b4a8f2d45141cc09483533e377169a3cb0",
+   "name": "Shizu"
+  },
+  "SHIP11": {
+   "file": "rv/SHIP11.RV.gz",
+   "bytes": 4006675,
+   "sha1": "da25b5113cf74484fc3dcac3f5259de7200e96a1",
+   "name": "Zhuangzong"
+  },
+  "SHIP12": {
+   "file": "rv/SHIP12.RV.gz",
+   "bytes": 2551578,
+   "sha1": "620266ec00861ee6ffe64dcfb30f253a4020fe1c",
+   "name": "Taizong"
+  },
+  "SHIP13": {
+   "file": "rv/SHIP13.RV.gz",
+   "bytes": 2147389,
+   "sha1": "6975c700366e4c7d692c8c20a56267da28c2a267",
+   "name": "Shizong"
+  },
+  "SHIP14": {
+   "file": "rv/SHIP14.RV.gz",
+   "bytes": 5048814,
+   "sha1": "ac1b0dd27cf843c14bfecbfeacd971845da75cb8",
+   "name": "Xuanzong"
+  },
+  "SHIP15": {
+   "file": "rv/SHIP15.RV.gz",
+   "bytes": 1182037,
+   "sha1": "ffb4d278e83e524bd420b6f34066dcc2f2c274e2",
+   "name": "Gaozong"
+  },
+  "SHIP20": {
+   "file": "rv/SHIP20.RV.gz",
+   "bytes": 1582445,
+   "sha1": "ea0d864d0d0f3c6252a699bbc746d85d09d5e8ff",
+   "name": "Vigilance"
+  },
+  "SHIP21": {
+   "file": "rv/SHIP21.RV.gz",
+   "bytes": 895166,
+   "sha1": "1b999a4a1b111c05e7ff06656a59806f4b4adf37",
+   "name": "Kahan"
+  },
+  "SHIP24": {
+   "file": "rv/SHIP24.RV.gz",
+   "bytes": 809167,
+   "sha1": "76b1b38b0612b6696598a37b8f0d2fab64c3b872",
+   "name": "Ox"
+  },
+  "SHIP25": {
+   "file": "rv/SHIP25.RV.gz",
+   "bytes": 594365,
+   "sha1": "a74abd1cbe3e38a648f533f8c2185cbba13f03c4",
+   "name": "Goddard"
+  },
+  "SHIP28": {
+   "file": "rv/SHIP28.RV.gz",
+   "bytes": 720699,
+   "sha1": "302390477e1ddfaa1ac57e64b4f3b7436c6d9dd8",
+   "name": "Agasicles"
+  },
+  "SHIP29": {
+   "file": "rv/SHIP29.RV.gz",
+   "bytes": 1139507,
+   "sha1": "f69b432249eec21fdb0d5c6363eb4f81046d7cae",
+   "name": "Anaxidamus"
+  },
+  "SHIP2B": {
+   "file": "rv/SHIP2B.RV.gz",
+   "bytes": 848032,
+   "sha1": "28f4aa975419d921811766c2d09737ff785480ae",
+   "name": "Charillus"
+  },
+  "SHIP2C": {
+   "file": "rv/SHIP2C.RV.gz",
+   "bytes": 1175773,
+   "sha1": "259918ad22f6745823219a87f75fa705439b4566",
+   "name": "Leonidas"
+  }
+ },
+ "files": {
+  "ATARAXIP.PLN": {
+   "file": "rv/ATARAXIP.PLN.gz",
+   "bytes": 6002466,
+   "sha1": "2992d4e6d344698309cb124182b503c611c0e136"
+  },
+  "BARNARDP.PLN": {
+   "file": "rv/BARNARDP.PLN.gz",
+   "bytes": 6393862,
+   "sha1": "18e2ef0fd5e65a200d561710068fe1ddecb321f5"
+  },
+  "CEPHIDP.PLN": {
+   "file": "rv/CEPHIDP.PLN.gz",
+   "bytes": 5687200,
+   "sha1": "5efefc2a0771cd60b91a638ed0822a674697e904"
+  },
+  "CRUCIBLP.PLN": {
+   "file": "rv/CRUCIBLP.PLN.gz",
+   "bytes": 5473432,
+   "sha1": "c1cf7deb5b59698ae1bb54dfde9ddc525f768a87"
+  },
+  "DEFIANCP.PLN": {
+   "file": "rv/DEFIANCP.PLN.gz",
+   "bytes": 5967744,
+   "sha1": "f0da4755b22059895ee347f7e79a914941fe7106"
+  },
+  "ENIGMAP.PLN": {
+   "file": "rv/ENIGMAP.PLN.gz",
+   "bytes": 7410840,
+   "sha1": "55f98bf055e79286b101ef30ead1c08a3879f8f2"
+  },
+  "LIXISP.PLN": {
+   "file": "rv/LIXISP.PLN.gz",
+   "bytes": 5730618,
+   "sha1": "2b0311cb797922806e9e3cd7cf256320047a6e58"
+  },
+  "LUYTENP.PLN": {
+   "file": "rv/LUYTENP.PLN.gz",
+   "bytes": 5398014,
+   "sha1": "1f11130fd76163bba80fe399afa2a4dcb1a43215"
+  },
+  "OLDZIEYP.PLN": {
+   "file": "rv/OLDZIEYP.PLN.gz",
+   "bytes": 5360438,
+   "sha1": "65c5c5474d30912f7dd902f9f75d0c2df02aeadc"
+  },
+  "RIGELP.PLN": {
+   "file": "rv/RIGELP.PLN.gz",
+   "bytes": 6742378,
+   "sha1": "59b5d84f7129d0167aace17a05f6571e8264329c"
+  },
+  "SHELTONP.PLN": {
+   "file": "rv/SHELTONP.PLN.gz",
+   "bytes": 6006486,
+   "sha1": "6b38c122c00fdcfc7d46ac31cea82c15c96ab224"
+  },
+  "SHMRNC.PLN": {
+   "file": "rv/SHMRNC.PLN.gz",
+   "bytes": 17221576,
+   "sha1": "ea03dc90e7b76e1b9c9eb2768568253204b1f796"
+  },
+  "SHMRNP.PLN": {
+   "file": "rv/SHMRNP.PLN.gz",
+   "bytes": 6021318,
+   "sha1": "d18f399f77ba3d0200b494a48f639e9fe03084d3"
+  },
+  "WOLF359P.PLN": {
+   "file": "rv/WOLF359P.PLN.gz",
+   "bytes": 6985806,
+   "sha1": "31cfd2fa2ed079ee26c5b07a01ee3f6bc0f2a34b"
+  }
+ }
+}
