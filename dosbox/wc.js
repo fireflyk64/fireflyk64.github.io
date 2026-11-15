@@ -902,6 +902,7 @@ function renderMission() {
   // (Terminal Velocity: the craft each pilot flies as in the others' games, the host's choice)
   $("tvCraftLabel").hidden = $("tvCraftGuestLabel").hidden = !isTvRoom() || one;
   $("tvCraftHost").disabled = $("tvCraftGuest").disabled = !isHost() || running;
+  tvCraftOffer();
   if (diff) {
     $("collisions").parentElement.hidden = true;
     lobby.rocks = "on";
@@ -1522,7 +1523,7 @@ async function joinRoom({ create = true } = {}) {
     renderMission();
     for (const id of ["room", "seats", "server", "relay"]) $(id).disabled = true;
     if (solo) chatLine(`You are ${esc(myName())}, alone in room ${esc(code)}: Fly starts the game as it is, with its own wingman.`, "sys");
-    else chatLine(`You are ${esc(myName())}, player ${game.selfId + 1} of ${game.maxPlayers} in room ${esc(code)}${game.selfId === 0 ? " (host)" : ""}. "Copy link" gives friends the way in.`, "sys");
+    else chatLine(`You are ${esc(myName())}, player ${game.selfId + 1} of ${game.maxPlayers} in room ${esc(code)}${game.selfId === 0 ? " (host)" : ""}. "Copy link" to play with friends.`, "sys");
     log(solo ? `lobby: room ${code} for one (no lobby server)` : `lobby: joined room ${code} as player ${game.selfId} of ${game.maxPlayers}`);
     renderRoster(); updateActions();
     $("chatInput").focus();
@@ -1859,7 +1860,27 @@ gameLook();
 const PRIV_FACE_KEY = "wc:privFace";
 try { const f = localStorage.getItem(PRIV_FACE_KEY); if (f && [...$("privFace").options].some((o) => o.value === f)) $("privFace").value = f; } catch (e) { /* the first */ }
 $("privFace").addEventListener("change", () => { try { localStorage.setItem(PRIV_FACE_KEY, $("privFace").value); } catch (e) { /* not kept */ } });
-// Terminal Velocity's craft menus, remembered in this browser
+// Terminal Velocity's craft menus: the registered game's craft of its other planets (the models in its CDROM.POD, the
+// names its briefings'; src/cpu/wcnet_tv_session.cpp's table) after the shareware's, offered while the game here is
+// the registered one (tvCraftOffer); remembered in this browser
+const TV_FULL_CRAFT = [["ddcshp.bin", "Crythanian Shockstar"], ["afighter.bin", "WSF Razor-4"], ["dogg.bin", "TTA Sandstorm"],
+  ["pooh.bin", "TTA Dustdevil"], ["deboss.bin", "TTA Penetrator"], ["lavash.bin", "OSO Phoenix"], ["triship.bin", "Ositsho Wedge"],
+  ["volship.bin", "Ositsho Quadram"], ["litecr.bin", "Erigonean Shriek"], ["bugship.bin", "CAF Attack Fighter"],
+  ["podgun1.bin", "DTS-1"], ["pincher.bin", "XI Coreguard"]];
+for (const id of ["tvCraftHost", "tvCraftGuest"]) {
+  for (const [value, text] of TV_FULL_CRAFT) {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = text; o.dataset.full = "1"; o.hidden = true;
+    $(id).append(o);
+  }
+}
+function tvCraftOffer() {
+  const full = !!(source && source.game.id === "tv" && source.files.some((f) => /(^|\/)CDROM\.POD$/i.test(f.path)));
+  for (const id of ["tvCraftHost", "tvCraftGuest"]) {
+    for (const o of $(id).options) if (o.dataset.full) o.hidden = o.disabled = !full;
+    if ($(id).selectedOptions[0] && $(id).selectedOptions[0].disabled) $(id).value = "ship.bin";
+  }
+}
 for (const id of ["tvCraftHost", "tvCraftGuest"]) {
   const key = "wc:" + id;
   try { const v = localStorage.getItem(key); if (v && [...$(id).options].some((o) => o.value === v)) $(id).value = v; } catch (e) { /* the first */ }
@@ -2108,7 +2129,7 @@ async function start(fromGesture) {
     touch.show(true);
     if (fromGesture && $("fullStart").checked) goFullscreen();
     status(together
-      ? `Room ${cfg.code}. "Copy link" (step 2) gives friends the way in.`
+      ? `Room ${cfg.code}. "Copy link" (step 2) to play with friends.`
       : `${source.game.title} is running.`);
   } catch (e) {
     running = false;
