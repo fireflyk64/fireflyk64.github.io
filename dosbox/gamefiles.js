@@ -369,6 +369,72 @@ function tfMusicOnFm(FS, root) {
   return `TIE Fighter's music: ${name || "none"} (General MIDI: no synthesizer in the browser) changed to FM4.MDR, the Sound Blaster's OPL3`;
 }
 
+// A file of a CD image among the game's files (ISO 9660: 2048-byte sectors, or raw 2352-byte ones as GOG's game.gog
+// holds them), by its path ("RESOURCE/ICONS640.ICO", any case): its bytes, or null.
+function readFromImage(FS, imagePath, wanted) {
+  let stream;
+  try { stream = FS.open(imagePath, "r"); } catch (e) { return null; }
+  try {
+    const at = (pos, len) => { const b = new Uint8Array(len); FS.read(stream, b, 0, len, pos); return b; };
+    let ss = 0, hdr = 0;
+    for (const [s, h] of [[2048, 0], [2352, 16]]) {
+      const p = at(16 * s + h, 6);
+      if (p[0] === 1 && String.fromCharCode(...p.subarray(1, 6)) === "CD001") { ss = s; hdr = h; break; }
+    }
+    if (!ss) return null;
+    const read = (sector, size) => {
+      const out = new Uint8Array(size);
+      for (let k = 0; k * 2048 < size; k++) out.set(at((sector + k) * ss + hdr, Math.min(2048, size - k * 2048)), k * 2048);
+      return out;
+    };
+    const u32 = (d, i) => (d[i] | d[i + 1] << 8 | d[i + 2] << 16 | d[i + 3] << 24) >>> 0;
+    const pvd = read(16, 2048);
+    let extent = u32(pvd, 158), size = u32(pvd, 166);     // (the root directory's record, at 156)
+    const parts = wanted.toUpperCase().split("/");
+    for (let n = 0; n < parts.length; n++) {
+      const d = read(extent, size);
+      let found = null;
+      for (let i = 0; i < d.length;) {
+        if (!d[i]) { i = (Math.floor(i / 2048) + 1) * 2048; continue; }     // (a record never spans sectors)
+        const name = String.fromCharCode(...d.subarray(i + 33, i + 33 + d[i + 32])).replace(/;\d+$/, "").toUpperCase();
+        if (name === parts[n]) { found = { extent: u32(d, i + 2), size: u32(d, i + 10), dir: (d[i + 25] & 2) !== 0 }; break; }
+        i += d[i];
+      }
+      if (!found || found.dir !== (n < parts.length - 1)) return null;
+      extent = found.extent;
+      size = found.size;
+    }
+    return read(extent, size);
+  } catch (e) {
+    return null;
+  } finally {
+    FS.close(stream);
+  }
+}
+
+// The in-flight map's icons (RESOURCE\ICONS640.ICO, MAPICONS.ICO): the installer-junk rule dropped .ICO files, so the
+// map asked for the CD (the user, 2026-11-15: "for the inflight map in tie fighter hitting m immediately crashed the
+// game on the missing file RESOURCE\icons640.ico and it asked me to insert the CD").  Kept now (`keep`); a copy of the
+// game kept in this browser before that gets them from the disc, where they are the same bytes.
+const TF_ICONS = ["ICONS640.ICO", "MAPICONS.ICO"];
+function tfIconsFromDisc(FS, root) {
+  const named = (dir, want) => { try { return FS.readdir(dir).find((n) => n.toUpperCase() === want) || null; } catch (e) { return null; } };
+  const res = named(root, "RESOURCE"), image = named(root, "GAME.GOG");
+  if (!res || !image) return "";
+  const got = [];
+  for (const name of TF_ICONS) {
+    if (named(`${root}/${res}`, name)) continue;
+    const data = readFromImage(FS, `${root}/${image}`, `RESOURCE/${name}`);
+    if (!data) continue;
+    FS.writeFile(`${root}/${res}/${name}`, data);
+    got.push(name);
+  }
+  return got.length ? `TIE Fighter: ${got.join(" and ")} copied from the disc (the map's icons, missing from this browser's copy)` : "";
+}
+function tfPrepare(FS, root) {
+  return [tfMusicOnFm(FS, root), tfIconsFromDisc(FS, root)].filter(Boolean).join("; ");
+}
+
 // Privateer's music made the Sound Blaster's (the user, 2026-11-09: "also zero music here").  SOUND.CFG's first line is
 // the music card and the speech card (PRCD.EXE, ovr392:05BB: "%d %d", then each card's four settings): music card 1
 // or 3 loads the "roland" driver (General MIDI: GOG's file says 3, for Windows' own synthesizer; there is none in the
@@ -682,10 +748,13 @@ export const GAMES = [
   // EMS for the extender, a Sound Blaster 16 on IRQ 7).  Single-player
   // until its hooks are built (docs/tiefighter.md).
   { id: "tf", tag: "TF", title: "TIE Fighter", detect: ["TIE.EXE"], run: "tie", multiplayer: true,
-    image: "game.gog", keep: ["IMUSE.INI"], cycles: 60000, campaign: TF_CAMPAIGN, noRoomOptions: true, screen: [640, 480], prepare: tfMusicOnFm,
+    // (cycles: DOSBox's automatic ones up to 60,000, the user: "the sound was very choppy at the base until I hit
+    // CNTRL-F11 three times"; measured in headless Chrome, a fixed 60,000 ran the concourse at 75% of real time and the
+    // flight at 86 to 88%, the sound starved; automatic, 100% everywhere at some 32,000 to 55,000)
+    image: "game.gog", keep: ["IMUSE.INI", ...TF_ICONS], cycles: 60000, cyclesAuto: true, campaign: TF_CAMPAIGN, noRoomOptions: true, screen: [640, 480], prepare: tfPrepare,
     // (the launcher's own words: the hooks find the game's program in memory by its bytes, not by this file)
     build: { text: "Loading TIE-Fighter CD" },
-    help: "TIE Fighter flown together: everybody in the room flies the same mission, each in a craft of the player's flight group (or the craft that pairs with it, for a mission flown alone), and sees the others where they really are. The craft near a pilot are flown by that pilot's machine, the rest by the host's; every shot is seen by everybody, a hit is decided by the shooter's machine and applied by the machine flying the craft hit, and a kill counts for the pilot who made it. A pilot down or the host's flight over ends the flight for everybody, mission failed: Fly Mission Again at the debriefing. A callsign with DEMO in it gives that pilot's craft to a wingman that flies itself (stays clear of mines and capital ships, attacks what attacks the other pilot or what it targets, else keeps to its wing): two-player tests with one person. The host decides: a guest's launch waits until the host flies, and the ship's PA calls a guest to the briefing. In a room the Combat Chamber's T/F row is the Z-95 challenge: two Z-95 Headhunters, hopelessly outgunned, flying the gunboat's and the T/I's missions against the Empire's own craft, the radio speaking for the other side in the game's own lines and voices. The host may pick a mission for everybody in the room's menu, any of the Combat Chamber's and any battle's: launching any Combat Chamber mission then flies it, briefing and all (the host may change it between flights). With none picked, a guest's Combat Chamber launch flies the host's; the line over the game says where the others are and when the host launches. The tour's own battles stay each pilot's own. Space skips the opening; at the registration desk type a pilot's name (or click one) and take the door; in flight the mouse is the stick and its button (or Space) fires, Backspace is full throttle, and in flight 0 opens the comms prompt (Enter sends the line to the room). What is done and what comes next: docs/tiefighter.md.",
+    help: "TIE Fighter flown together: everybody in the room flies the same mission, each in a craft of the player's flight group (or the craft that pairs with it, for a mission flown alone), and sees the others where they really are. The craft near a pilot are flown by that pilot's machine, the rest by the host's; every shot is seen by everybody, a hit is decided by the shooter's machine and applied by the machine flying the craft hit, and a kill counts for the pilot who made it. A pilot down or the host's flight over ends the flight for everybody, mission failed: Fly Mission Again at the debriefing. A callsign with DEMO in it gives that pilot's craft to a wingman that flies itself (stays clear of mines and capital ships, attacks what attacks the other pilot or what it targets, else keeps to its wing): two-player tests with one person. The host decides: a guest's launch waits until the host flies, and the ship's PA calls a guest to the briefing. In a room the Combat Chamber's T/F row is the Z-95 challenge: two Z-95 Headhunters, hopelessly outgunned, flying the gunboat's and the T/I's missions against the Empire's own craft, the radio speaking for the other side in the game's own lines and voices. The host may pick a mission for everybody in the room's menu, any of the Combat Chamber's and any battle's: launching any Combat Chamber mission then flies it, briefing and all (the host may change it between flights). With none picked, a guest's Combat Chamber launch flies the host's (the page's log says where the others are; over the game only the PA's call, the pilots' words and a launch waiting for the host). The tour's own battles stay each pilot's own. Space skips the opening; at the registration desk type a pilot's name (or click one) and take the door; in flight the mouse is the stick and its button (or Space) fires, Backspace is full throttle, and in flight 0 opens the comms prompt (Enter sends the line to the room). What is done and what comes next: docs/tiefighter.md.",
     // the flight's controls as the emulator gives them (src/cpu/wcnet_tie_controls.cpp; the "Flight" choice beside Controller)
     keys: "<b>TIE Fighter in flight:</b> the arrow keys steer (a tap turns a little, held they build to the full turn in a third of a second; <kbd>Shift</kbd> with an arrow turns at full at once; <kbd>Up</kbd> dives as a stick pushed forward), the keypad's <kbd>Ins</kbd> and <kbd>Del</kbd> roll. The mouse, as the <b>Flight</b> choice beside Controller has it: <i>point to aim</i> (a ring shows the pointer; the middle is still, the further the pointer the faster the turn, as in Wing Commander and RetroVega; the craft turns and climbs without banking, and the right button held with the mouse moved across rolls), <i>point to aim, banking</i> (the same with the game's own bank into each turn), <i>drag to steer</i> (the game's own, 1994), or nothing (the keyboard alone, or a joystick: a controller picked above, which also rolls and fires); <kbd>F12</kbd> in flight switches between the first four. <kbd>Space</kbd> or the left button fires (Space is still the game's when it asks for it: <kbd>Shift</kbd>+<kbd>S</kbd> then <kbd>Space</kbd> calls reinforcements); <kbd>0</kbd> opens the comms prompt in flight, <kbd>Enter</kbd> sends; <kbd>W</kbd> (held a moment) changes weapon, <kbd>Backspace</kbd> full throttle, <kbd>\\</kbd> none, <kbd>[</kbd> and <kbd>]</kbd> a third and two thirds; <kbd>T</kbd> and <kbd>R</kbd> target; <kbd>Esc</kbd> the game's options.",
     dosbox: "[dosbox]\nmachine=svga_s3\nmemsize=16\n[dos]\nxms=true\nems=true\numb=true\n[sblaster]\nsbtype=sb16\nirq=7\ndma=1\nhdma=5\n" },
@@ -851,10 +920,18 @@ export function legacyAdvice(which) {
                link: l.url, linkText: `${l.title} on GOG` } : null;
 }
 
-// Directories and file types an installer leaves behind that a DOS game
-// never reads (GOG's own DOSBox, redistributables, manuals, icons).
+// What an installer leaves beside a game that the game never reads: its folders (GOG's own DOSBox, the
+// redistributables, GOG's support files, the installer's temporary files), GOG's metadata files (goggame-*, the
+// launcher's webcache.zip), documents and shortcuts (manuals as PDF, .lnk, .url) and Windows libraries (.dll: no DOS
+// program loads one).  Everything else under the game's folder is kept, whatever its name: a game's own files can
+// look like an installer's (TIE Fighter's map icons are RESOURCE\ICONS640.ICO and MAPICONS.ICO; the user,
+// 2026-11-15: "I suspect all files are actually needed that are there in the first place").  Measured over every
+// installer the page takes (GOG's TIE Fighter, Wing Commander 1.01 and its 35th Anniversary Edition, Wing Commander
+// II's, Privateer, Terminal Velocity, Steam's Raptor): what this leaves out under the game's folder is manuals, GOG's
+// metadata and DOSBox alone.
 const JUNK_DIRS = new Set(["dosbox", "__redist", "__support", "commonappdata", "tmp", "__macosx"]);
-const JUNK_EXT = new Set(["pdf", "ico", "dll", "lnk", "url", "hashdb", "info", "script", "jpg", "jpeg", "png", "gif", "html", "htm", "inf", "ini", "zip", "gz", "tar"]);
+const JUNK_EXT = new Set(["pdf", "lnk", "url", "dll"]);
+const JUNK_NAME = /^(goggame-\d+\.(ico|hashdb|info|script|dll)|webcache\.zip|goglog\.ini)$/i;
 
 // -- zip ---------------------------------------------------------------------
 
@@ -941,7 +1018,7 @@ function isJunk(path) {
   const parts = path.split("/");
   if (parts.slice(0, -1).some((d) => JUNK_DIRS.has(d.toLowerCase()))) return true;
   if (KEEP.has(base(path).toUpperCase())) return false;
-  return JUNK_EXT.has(ext(path));
+  return JUNK_EXT.has(ext(path)) || JUNK_NAME.test(base(path));
 }
 
 // Finds the game among the files: the known executable closest to the top
