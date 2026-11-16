@@ -1,5 +1,5 @@
 {
- "build": "00b2d27e",
+ "build": "f61e00d1",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
@@ -168,72 +168,72 @@
   "ATARAXIP.PLN": {
    "file": "rv/ATARAXIP.PLN.gz",
    "bytes": 6002466,
-   "sha1": "3e5ab570b01aaa562d98fa159885ee9aaabce04f"
+   "sha1": "661f514bbcd53c036f227cd81796e82fdc0db009"
   },
   "BARNARDP.PLN": {
    "file": "rv/BARNARDP.PLN.gz",
    "bytes": 6393862,
-   "sha1": "460532a86e87f1b05d552b7f784bc8acd9d15172"
+   "sha1": "71d0cb75f1c9ac5a45e7de07abd506d9300efa82"
   },
   "CEPHIDP.PLN": {
    "file": "rv/CEPHIDP.PLN.gz",
    "bytes": 5687200,
-   "sha1": "47969d7cacc001ee5f0baec4374b69af3c1656b6"
+   "sha1": "86e9f2c87133fb871dfa7b20209323e868173949"
   },
   "CRUCIBLP.PLN": {
    "file": "rv/CRUCIBLP.PLN.gz",
    "bytes": 5473432,
-   "sha1": "b7f2dc170b4f19cf9294d3cd13db03208bb66463"
+   "sha1": "3de59f7a3acbb5b86d398df05f50fd6a859c2eaf"
   },
   "DEFIANCP.PLN": {
    "file": "rv/DEFIANCP.PLN.gz",
    "bytes": 5967744,
-   "sha1": "f29c4687948b0b3587906d80292ac0e0b0267448"
+   "sha1": "179f0f897f453e0624520ffd205b759575a9f0bf"
   },
   "ENIGMAP.PLN": {
    "file": "rv/ENIGMAP.PLN.gz",
    "bytes": 7410840,
-   "sha1": "c40099c930e508d64f868d96118c0d7cb320a429"
+   "sha1": "1627848cddfa22ef86889101f46aca745dbf54f3"
   },
   "LIXISP.PLN": {
    "file": "rv/LIXISP.PLN.gz",
    "bytes": 5730618,
-   "sha1": "78c524d1a9a6ebd22d481e906526b3791885fc7c"
+   "sha1": "b4749861dfd74f49f607a2c1f729ab6fd391fb0a"
   },
   "LUYTENP.PLN": {
    "file": "rv/LUYTENP.PLN.gz",
    "bytes": 5398014,
-   "sha1": "1983482975b575d46c26c950a8e2a45af0c05045"
+   "sha1": "894f735c10a0266df59fc268d12dd3d614c7eab2"
   },
   "OLDZIEYP.PLN": {
    "file": "rv/OLDZIEYP.PLN.gz",
    "bytes": 5360438,
-   "sha1": "f72dba435b8fe0ea3c468c153c550887ed4be056"
+   "sha1": "0ffea8f27ed8d40e14a4d349820a52f240631ce0"
   },
   "RIGELP.PLN": {
    "file": "rv/RIGELP.PLN.gz",
    "bytes": 6742378,
-   "sha1": "92683a0f789ae31ba65498ed8d411b0e3fb7927d"
+   "sha1": "3ce25c63b48955d172422645341d4754f61f5d1e"
   },
   "SHELTONP.PLN": {
    "file": "rv/SHELTONP.PLN.gz",
    "bytes": 6006486,
-   "sha1": "f012ec2a0e56b8e1f1d6a091cbfc5719792f030a"
+   "sha1": "979fe3aa87cd3cda63ddbd52e1be933aa58164bf"
   },
   "SHMRNC.PLN": {
    "file": "rv/SHMRNC.PLN.gz",
    "bytes": 17221576,
-   "sha1": "25407ca123786e34dcd7deeae3ce3677c5417ac5"
+   "sha1": "878e6a9ee7d4d3efb7463cdf75ab6fc08018e66d"
   },
   "SHMRNP.PLN": {
    "file": "rv/SHMRNP.PLN.gz",
    "bytes": 6021318,
-   "sha1": "d8c022bdcd1b8c8d1aaf2a400a436a5349aa857f"
+   "sha1": "9bdc88d41cff8b95fa404c935b9397e7c44410a4"
   },
   "WOLF359P.PLN": {
    "file": "rv/WOLF359P.PLN.gz",
    "bytes": 6985806,
-   "sha1": "ef38d76b8b61e074ee8b3158b961e0bba5fd7a6e"
+   "sha1": "45b174ff79b81bd1c7da7175218ff042dd6f33b6"
   }
  }
 }
