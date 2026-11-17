@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>TIE Fighter (the 1994 demo), multiplayer in the browser</title>
+<meta http-equiv="refresh" content="0; url=../dosbox/?game=tiedemo">
+<script>
+  var q = new URLSearchParams(location.search); q.set("game", "tiedemo");
+  location.replace("../dosbox/?" + q.toString() + location.hash);
+</script>
+<p><a href="../dosbox/?game=tiedemo">TIE Fighter (the 1994 demo), multiplayer in the browser</a></p>

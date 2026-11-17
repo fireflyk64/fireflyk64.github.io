@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Raptor, multiplayer in the browser</title>
+<meta http-equiv="refresh" content="0; url=../dosbox/?game=rap">
+<script>
+  var q = new URLSearchParams(location.search); q.set("game", "rap");
+  location.replace("../dosbox/?" + q.toString() + location.hash);
+</script>
+<p><a href="../dosbox/?game=rap">Raptor, multiplayer in the browser</a></p>
