@@ -11,8 +11,9 @@
 //     the speed, against 1.5 pixels a frame of steering; three quarters of it off the gas).
 //     Lift when coasting from here just gets the car down to that speed by the corner;
 //     brake when coasting alone would not.
-//   * steering: out of a barrier's lane, off the dirt, onto the inside of a corner, over a
-//     recharge patch when hurt, onto a boost pad.
+//   * steering: out of a barrier's lane, off the dirt, onto the inside of a corner (the
+//     short way round: fzero.asm's racing line), over a recharge patch when hurt, onto a
+//     boost pad.
 // The numbers are fzero.asm's (PLAYER_Z, PUSH_K, FRICTION, BRAKE, the lanes); the places in
 // memory come from fsub.sym.  tools/playtest.js has a "guided" bot that does what the guide
 // says, a person's reaction late, to check that following it gets round.
@@ -77,7 +78,8 @@ export function advise(rd, sym, lead = LEAD) {
   // --- steering: where on the road to be, and why
   let target = 0, why = "", danger = false;
   const here = bendAt(car >> 8) || bendAt((car + 128) >> 8);
-  if (Math.abs(here) > 8) { target = here > 0 ? 18 : -18; why = "the inside of the corner"; }
+  // (the inside is the short way round: the car covers more of the course there)
+  if (Math.abs(here) > 2) { target = here > 0 ? 30 : -30; why = "the inside: the short way round"; }
   const objs = [];
   for (let k = 0; k < 2; k++) {
     const a = sym.wObjSlots + k * 4;
@@ -107,10 +109,13 @@ export function advise(rd, sym, lead = LEAD) {
       held.target = SPOTS.filter((p) => clear(p) && !beyond(p)).sort((p, q) => Math.abs(p - x) - Math.abs(q - x))[0];
       held.switched = true;
     }
+    // (A sharp corner on the way there throws the car to its outside, whatever it does: then
+    // the clear spot furthest out that way, where the car is going to be anyway.)
+    const bendOnWay = [0, 1, 2].map((k) => bendAt((car >> 8) + k)).find((b) => Math.abs(b) >= 16);
     if (held.target === null && !(clear(x) && clear(at))) {
       const across = (p) => lanes.some((l) => (at < l && l < p) || (p < l && l < at));
       const ok = SPOTS.filter(clear), near = (list) => list.slice().sort((p, q) => Math.abs(p - at) - Math.abs(q - at))[0];
-      held.target = near(ok.filter((p) => !across(p))) ?? near(ok);
+      held.target = bendOnWay !== undefined ? (bendOnWay > 0 ? ok[0] : ok[ok.length - 1]) : near(ok.filter((p) => !across(p))) ?? near(ok);
     }
     danger = true;
     if (held.target !== null) { target = held.target; why = "a barrier ahead"; }
@@ -119,15 +124,18 @@ export function advise(rd, sym, lead = LEAD) {
   let wish = null;                                                             // a nice-to-have: pad, recharge, tunnel
   for (const o of objs) {
     if (o.kind >= 1 && o.kind <= 4) continue;
-    if (o.kind === 5 || o.kind === 6) {
-      const left = o.kind === 5, onIt = left ? x < 10 : x > -10;
-      if (!danger && onIt) { target = left ? 22 : -22; why = `dirt on the ${left ? "left" : "right"}`; danger = true; }
+    if (o.kind === 5 || o.kind === 6 || o.kind === 11 || o.kind === 12) {
+      // dirt, or a ramp: a ramp throws a sliding car off the edge, so keep off it
+      // (or take it dead straight, near its inner side, for its push)
+      const left = o.kind === 5 || o.kind === 11, onIt = left ? x < 10 : x > -10, what = o.kind <= 6 ? "dirt" : "a ramp (take it straight or not at all)";
+      if (!danger && onIt) { target = left ? 22 : -22; why = `${what} on the ${left ? "left" : "right"}`; danger = true; }
       else if (!danger) { target = x; danger = true; }
-    } else if ((o.kind === 9 || o.kind === 10) && health < 48) wish = wish || { target: o.kind === 9 ? -24 : 24, why: "a recharge patch: slow over it for more" };
-    else if (o.kind === 7 || o.kind === 8) wish = wish || { target: o.kind === 7 ? -24 : 24, why: "a boost pad" };
-    else if (o.kind === 0) wish = wish || { target: -24, why: "the tunnel: a short cut" };
+    } else if ((o.kind === 9 || o.kind === 10) && health < 48) wish = wish || { target: o.kind === 9 ? -24 : 24, why: "a recharge patch: slow over it for more", dist: o.dist };
+    else if (o.kind === 7 || o.kind === 8) wish = wish || { target: o.kind === 7 ? -28 : 28, why: "a boost pad: its middle", dist: o.dist };
+    else if (o.kind === 0) wish = wish || { target: -24, why: "the tunnel: a short cut", dist: o.dist };
   }
-  if (!danger && wish && Math.abs(here) <= 8) ({ target, why } = wish);
+  // (out of a corner, or close enough that it is now or never: a pad just past a corner)
+  if (!danger && wish && (Math.abs(here) <= 2 || wish.dist < PLAYER_Z + 400)) ({ target, why } = wish);
   const off = target - x, steer = Math.abs(off) > 6 ? Math.sign(off) : 0;
   told = target;
 
