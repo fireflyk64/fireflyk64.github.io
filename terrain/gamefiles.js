@@ -1,7 +1,7 @@
 // Bringing your own game files: everything stays in the browser.
 //
 //   readZip(bytes)              -> [{path, data}] from a .zip (stored/deflate)
-//   extractInstaller(bytes, cb) -> [{path, data}] from an Inno Setup / GOG
+//   extractInstaller(file, cb)  -> [{path, data}] from an Inno Setup / GOG
 //                                  installer, using innoextract compiled to
 //                                  WebAssembly in a worker (inno-worker.js)
 //   identifyGame(files)         -> which game this is and how to run it
@@ -66,7 +66,7 @@
 // wc.js fills `series` from it.  `ownRocks`: the game's asteroids are its
 // own, every machine's (the room's asteroid choices do not apply).
 // `builtin`: a game the site itself serves (ours to give away), as a
-// .tar.gz beside the page: it is in every browser's "Play" menu with no
+// .tar.gz beside the page: it is in every browser's "Game" menu with no
 // files dropped, fetched when it is flown.
 // `image`: a CD image among the game's files (GOG's game.gog, the disc as
 // raw sectors), mounted as drive D before the game runs (imgmount, an
@@ -78,6 +78,8 @@
 // whose rows a 400-row canvas would drop).
 // `prepare(FS, root)`: the game's own settings made fit for the browser after its files are installed (the copy in
 // the emulator's memory only; what it did, for the log).
+
+import { unpackPvm } from "./pvm.js";
 
 // Wing Commander's Vega campaign: series 1.. and mission 0.. within the
 // series (what the MIS / SERIES environment of the hooks takes).  The system
@@ -367,6 +369,72 @@ function tfMusicOnFm(FS, root) {
   return `TIE Fighter's music: ${name || "none"} (General MIDI: no synthesizer in the browser) changed to FM4.MDR, the Sound Blaster's OPL3`;
 }
 
+// A file of a CD image among the game's files (ISO 9660: 2048-byte sectors, or raw 2352-byte ones as GOG's game.gog
+// holds them), by its path ("RESOURCE/ICONS640.ICO", any case): its bytes, or null.
+function readFromImage(FS, imagePath, wanted) {
+  let stream;
+  try { stream = FS.open(imagePath, "r"); } catch (e) { return null; }
+  try {
+    const at = (pos, len) => { const b = new Uint8Array(len); FS.read(stream, b, 0, len, pos); return b; };
+    let ss = 0, hdr = 0;
+    for (const [s, h] of [[2048, 0], [2352, 16]]) {
+      const p = at(16 * s + h, 6);
+      if (p[0] === 1 && String.fromCharCode(...p.subarray(1, 6)) === "CD001") { ss = s; hdr = h; break; }
+    }
+    if (!ss) return null;
+    const read = (sector, size) => {
+      const out = new Uint8Array(size);
+      for (let k = 0; k * 2048 < size; k++) out.set(at((sector + k) * ss + hdr, Math.min(2048, size - k * 2048)), k * 2048);
+      return out;
+    };
+    const u32 = (d, i) => (d[i] | d[i + 1] << 8 | d[i + 2] << 16 | d[i + 3] << 24) >>> 0;
+    const pvd = read(16, 2048);
+    let extent = u32(pvd, 158), size = u32(pvd, 166);     // (the root directory's record, at 156)
+    const parts = wanted.toUpperCase().split("/");
+    for (let n = 0; n < parts.length; n++) {
+      const d = read(extent, size);
+      let found = null;
+      for (let i = 0; i < d.length;) {
+        if (!d[i]) { i = (Math.floor(i / 2048) + 1) * 2048; continue; }     // (a record never spans sectors)
+        const name = String.fromCharCode(...d.subarray(i + 33, i + 33 + d[i + 32])).replace(/;\d+$/, "").toUpperCase();
+        if (name === parts[n]) { found = { extent: u32(d, i + 2), size: u32(d, i + 10), dir: (d[i + 25] & 2) !== 0 }; break; }
+        i += d[i];
+      }
+      if (!found || found.dir !== (n < parts.length - 1)) return null;
+      extent = found.extent;
+      size = found.size;
+    }
+    return read(extent, size);
+  } catch (e) {
+    return null;
+  } finally {
+    FS.close(stream);
+  }
+}
+
+// The in-flight map's icons (RESOURCE\ICONS640.ICO, MAPICONS.ICO): the installer-junk rule dropped .ICO files, so the
+// map asked for the CD (the user, 2026-11-15: "for the inflight map in tie fighter hitting m immediately crashed the
+// game on the missing file RESOURCE\icons640.ico and it asked me to insert the CD").  Kept now (`keep`); a copy of the
+// game kept in this browser before that gets them from the disc, where they are the same bytes.
+const TF_ICONS = ["ICONS640.ICO", "MAPICONS.ICO"];
+function tfIconsFromDisc(FS, root) {
+  const named = (dir, want) => { try { return FS.readdir(dir).find((n) => n.toUpperCase() === want) || null; } catch (e) { return null; } };
+  const res = named(root, "RESOURCE"), image = named(root, "GAME.GOG");
+  if (!res || !image) return "";
+  const got = [];
+  for (const name of TF_ICONS) {
+    if (named(`${root}/${res}`, name)) continue;
+    const data = readFromImage(FS, `${root}/${image}`, `RESOURCE/${name}`);
+    if (!data) continue;
+    FS.writeFile(`${root}/${res}/${name}`, data);
+    got.push(name);
+  }
+  return got.length ? `TIE Fighter: ${got.join(" and ")} copied from the disc (the map's icons, missing from this browser's copy)` : "";
+}
+function tfPrepare(FS, root) {
+  return [tfMusicOnFm(FS, root), tfIconsFromDisc(FS, root)].filter(Boolean).join("; ");
+}
+
 // Privateer's music made the Sound Blaster's (the user, 2026-11-09: "also zero music here").  SOUND.CFG's first line is
 // the music card and the speech card (PRCD.EXE, ovr392:05BB: "%d %d", then each card's four settings): music card 1
 // or 3 loads the "roland" driver (General MIDI: GOG's file says 3, for Windows' own synthesizer; there is none in the
@@ -385,10 +453,214 @@ function privMusicOnFm(FS, root) {
   return `Privateer's music: card ${first[0] || "none"} (General MIDI: no synthesizer in the browser) changed to 2, the Sound Blaster's FM`;
 }
 
+// Wing Commander's sound card is the word after "v" in WINGCMDR.CFG (CRUSADE.CFG for SM2.EXE): "a904" the AdLib at
+// 388h, the Sound Blaster's FM, as GOG's Legacy Edition has it ("v a904 z"); "r" the Roland MT-32, as the 35th
+// Anniversary Edition's DOS game has it ("v r z": GOG's own DOSBox there plays it through a synthesizer; the browser
+// has none: no music at all).  A Roland setting is changed to the Legacy Edition's line, byte for byte.
+function wc1MusicOnFm(FS, root) {
+  const said = [];
+  for (const name of ["WINGCMDR.CFG", "CRUSADE.CFG"]) {
+    const path = `${root}/${name}`;
+    let text;
+    try { text = new TextDecoder().decode(FS.readFile(path)); } catch (e) { continue; }
+    if (!text.replace(/\0/g, "").trim().split(/\s+/).includes("r")) continue;
+    FS.writeFile(path, new TextEncoder().encode("v a904 z\r\n\0"));
+    said.push(name);
+  }
+  return said.length ? `Wing Commander's music: the Roland MT-32 of ${said.join(" and ")} (no synthesizer in the browser) changed to the AdLib, the Sound Blaster's FM` : "";
+}
+
+// Terminal Velocity's shareware (3dtv12.zip, 3D Realms' BBS release) holds an installer, INSTALL.EXE, and the game in
+// pieces, TV12BBS._1, ._2, ._3: put end to end they are a zip (the installer's own header before it) of the game's
+// files, which INSTALL.EXE unpacks to C:\TV.  expandSplitZips does the same in the browser: every set of pieces
+// <name>._1, ._2, ... (any case, the same directory) that reads as a zip is replaced by the files in it.
+export async function expandSplitZips(files) {
+  const groups = new Map();
+  for (const f of files) {
+    const m = /^(.*)\._(\d+)$/.exec(f.path);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ n: Number(m[2]), f });
+  }
+  let out = files;
+  for (const [, parts] of groups) {
+    parts.sort((a, b) => a.n - b.n);
+    if (parts[0].n !== 1 || parts.some((p, i) => p.n !== i + 1)) continue;
+    const size = parts.reduce((t, p) => t + p.f.data.length, 0);
+    const whole = new Uint8Array(size);
+    let at = 0;
+    for (const p of parts) { whole.set(p.f.data, at); at += p.f.data.length; }
+    let inside;
+    try { inside = await readZip(whole); } catch (e) { continue; }
+    const dirOf = parts[0].f.path.includes("/") ? parts[0].f.path.slice(0, parts[0].f.path.lastIndexOf("/") + 1) : "";
+    const drop = new Set(parts.map((p) => p.f));
+    out = out.filter((f) => !drop.has(f)).concat(inside.map((f) => ({ path: dirOf + f.path, data: f.data })));
+  }
+  // (Raptor's shareware, 1rap12.zip: its installer and RAPSW12.SHR, one zip of the game's files: replaced the same way)
+  for (const f of out.slice()) {
+    if (!/\.shr$/i.test(f.path)) continue;
+    let inside;
+    try { inside = await readZip(f.data); } catch (e) { continue; }
+    const dirOf = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/") + 1) : "";
+    out = out.filter((g) => g !== f).concat(inside.map((g) => ({ path: dirOf + g.path, data: g.data })));
+  }
+  // (the TIE Fighter demo: its two floppies, whose TIEDEMO.001 and TIEDEMO.002 hold the game's files compressed, as
+  // folders (the Internet Archive's TIE_Fighter_Preview__Dodge_Neon.zip: disk1/, disk2/, the first release with the
+  // Dodge Neon's showroom) or as zips of their own (DOS Games Archive's tiedemo.zip: tiedem1.zip, tiedem2.zip, a
+  // later repack without it); unpacked as its installer does (web/pvm.js), the floppies' own files left out but for
+  // the READ.ME and the FLIGHT.HLP)
+  for (const f of out.slice()) {
+    if (!/(^|\/)tiedem\d\.zip$/i.test(f.path)) continue;
+    let inside;
+    try { inside = await readZip(f.data); } catch (e) { continue; }
+    const dirOf = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/") + 1) : "";
+    out = out.filter((g) => g !== f).concat(inside.map((g) => ({ path: dirOf + g.path, data: g.data })));
+  }
+  const v1 = out.find((f) => /(^|\/)tiedemo\.001$/i.test(f.path)), v2 = out.find((f) => /(^|\/)tiedemo\.002$/i.test(f.path));
+  if (v1 && v2) {
+    const dirOf = v1.path.includes("/") ? v1.path.slice(0, v1.path.lastIndexOf("/") + 1) : "";
+    const dir2 = v2.path.includes("/") ? v2.path.slice(0, v2.path.lastIndexOf("/") + 1) : "";
+    const files = unpackPvm([v1.data, v2.data], dirOf);
+    const floppy = /(^|\/)(tiedemo\.00\d|tiedemo\.inf|disk\.id|install\.exe|detect\.exe)$/i;
+    const inDir = (f, d) => f.path.startsWith(d) && !f.path.slice(d.length).includes("/");    // (directly in it)
+    out = out.filter((f) => !floppy.test(f.path) || !(inDir(f, dirOf) || inDir(f, dir2))).concat(files);
+  }
+  return out;
+}
+
+// The TIE Fighter demo's own settings, as its installer writes them when there are none (docs/tiedemo.md):
+// LANDRU.CFG, the sound (the music on the AdLib, the effects and the voices on a Sound Blaster at 220: "adlib_w", its
+// ADLIB_W.IMS), the machine's speed (FAST), "ems" and "diff"; OPTIONS.CFG, the in-flight options of a FAST machine with
+// the digitized sound on (the installer's FASTYES.CFG).
+function tdPrepare(FS, root) {
+  const said = [];
+  const has = (name) => { try { FS.readFile(`${root}/${name}`); return true; } catch (e) { return false; } };
+  if (!has("LANDRU.CFG")) {
+    FS.writeFile(`${root}/LANDRU.CFG`, new TextEncoder().encode("adlib_w\r\nFAST\r\nems\r\ndiff\r\n"));
+    said.push("LANDRU.CFG (the AdLib's music, the Sound Blaster's effects, a fast machine)");
+  }
+  if (!has("OPTIONS.CFG") && has("FASTYES.CFG")) {
+    FS.writeFile(`${root}/OPTIONS.CFG`, FS.readFile(`${root}/FASTYES.CFG`));
+    said.push("OPTIONS.CFG (the installer's FASTYES.CFG)");
+  }
+  return said.length ? `The TIE Fighter demo's settings, as its installer writes them: ${said.join(", ")}` : "";
+}
+
+// Terminal Velocity's own settings made for the browser at each launch (src/cpu/wcnet_tv.cpp; docs/terminalvelocity.md):
+// the Sound Blaster 16's DIGPAK driver as SOUNDRV.COM (SETUP.EXE's Sound Setup copies the card's driver there; TV.EXE
+// loads it, the music and the effects both through it), SETUP.CFG as SETUP.EXE's "Save and launch TV" writes it (TV.EXE
+// asks for setup without one), and in VOX.INI (the game's settings, written by the game) the high-resolution mode (the
+// game's own "Res: SVGA": 640 x 240 drawn on a 640 x 480 screen; 640,480 there breaks the terrain) and the control:
+// with a pad picked "Built in" (opts.joystick: the game port has it), the game's Gamepad control (2) calibrated to
+// DOSBox's port as the game's own Calibrate measures it (centre 64, 0 to 128); else a Gamepad control left from an
+// earlier launch goes back to the keyboard (the port is empty), the mouse kept.
+const TV_SETUP_CFG = [";Setup File for TV", ";Version 1.2", "", "", "[Screen Modes]", "ScreenMode = 0", "", "", "[Sound Setup]",
+  "FXDevice = 0", "MusicDevice = 0", "FXVolume = 128", "MusicVolume = 128", "", "", "[Comm Setup]", "ComPort = 2", "IrqNumber = ~",
+  "UartAddress = ~", "PortSpeed = 9600", "ToneDial = 1", "SocketNumber = ~", "NumberPlayers = 2", 'InitString = "ATZ"',
+  'HangupString = "ATH0"', 'DialoutString = ""', "",
+  ...Array.from({ length: 10 }, (_, i) => `CommbatMacro#${i} = "No Macro #${i + 1}"`), "",
+  ...Array.from({ length: 10 }, (_, i) => [`PhoneName#${i} = ""`, `PhoneNumber#${i} = ""`]).flat(), ""].join("\r\n");
+const TV_VOX_INI = ["musicFlag", "1", "soundFlag", "1", "mixSpeed", "11025", "skyTextureFlag", "1",
+  "joystickActive,xcenter,ycenter,throttleMin,throttleMax", "0,0,0,0,0", "perspectiveFlag,airShadowFlag", "1,2",
+  "gamePIXX,gamePIXY,gameX1,gameY1,gameX2,gameY2", "640,240,0,0,0,0", "localBusVideo", "1", "aspectRatio,flipVideo", "0,0",
+  "textureResolution", "1", "difficulty,briefingFlag,cinemaFlag,showDemoFlag", "1,1,1,1",
+  "xStickMin,yStickMin,xStickMax,yStickMax", "0,0,0,0", "notebookStickFlag", "0", "stereoFlag,musicVolume,soundVolume",
+  "0,65536,65536", "weaponKey,fireKey,leftKey,rightKey,upKey,downKey,throtUp,throtDown", "56,57,75,77,72,80,30,44",
+  "buttonFire,buttonWeapon,buttonThrottleUp,buttonThrottleDown", "1,2,8,4", "boomZoom", "65536",
+  "autoLevel,mouseControl,rollLeftKey,rollRightKey,partsFlag,mouseFlip", "1,0,71,73,1,1",
+  "mouseSenseX,mouseSenseY,mouseMotion,mouseLeftButton,mouseRightButton", "8,16,1,0,1", ""].join("\r\n");
+function tvPrepare(FS, root, opts = {}) {
+  const said = [];
+  const read = (name) => { try { return FS.readFile(`${root}/${name}`); } catch (e) { return null; } };
+  const has = (name) => read(name) !== null;
+  if (!has("SOUNDRV.COM")) {
+    const sb = read("SB16.COM");
+    if (sb) { FS.writeFile(`${root}/SOUNDRV.COM`, sb); said.push("the Sound Blaster 16's driver as SOUNDRV.COM"); }
+  }
+  if (!has("SETUP.CFG")) { FS.writeFile(`${root}/SETUP.CFG`, new TextEncoder().encode(TV_SETUP_CFG)); said.push("SETUP.CFG"); }
+  // (the registered game's cinematics without the line that says where they are: an archive that lost CDROM.INI)
+  if (has("CDROM.POD") && !has("CDROM.INI")) {
+    let tvi = false;
+    try { tvi = FS.readdir(`${root}/TVI`).some((n) => /\.TVI$/i.test(n)); } catch (e) { /* no cinematics */ }
+    if (tvi) { FS.writeFile(`${root}/CDROM.INI`, new TextEncoder().encode(".\\TVI")); said.push("CDROM.INI (the cinematics in TVI)"); }
+  }
+  const vox = read("VOX.INI");
+  const lines = new TextDecoder().decode(vox || new TextEncoder().encode(TV_VOX_INI)).split(/\r?\n/);
+  const set = (head, fn) => {
+    const i = lines.findIndex((l) => l.startsWith(head));
+    if (i >= 0 && i + 1 < lines.length) lines[i + 1] = fn(lines[i + 1].split(",")).join(",");
+  };
+  set("gamePIXX,", (v) => { v[0] = "640"; v[1] = "240"; return v; });
+  // the Graphics Options at their best (the user: "Let's ensure detail is maximum"): the sky's texture, Image Quality
+  // Pentium (perspective), Shadows Pentium, Texture High Detail (12 MB free: the machine has 32); but Debris Normal
+  // (the user, 2026-11-16: "can you set debris to be normal but keep shadows max", "max debris looks bad")
+  set("skyTextureFlag", () => ["1"]);
+  set("perspectiveFlag,", () => ["1", "2"]);
+  set("textureResolution", () => ["1"]);
+  set("autoLevel,", (v) => { if (v.length > 4) v[4] = "1"; return v; });
+  let control = "";
+  set("joystickActive,", (v) => {
+    if (opts.joystick) { control = "the gamepad (built in)"; return ["2", "64", "64", v[3] || "0", v[4] || "0"]; }
+    if (Number(v[0]) >= 2) { control = "the keyboard (no pad built in)"; v[0] = "0"; }
+    return v;
+  });
+  if (opts.joystick) set("xStickMin,", () => ["0", "0", "128", "128"]);
+  FS.writeFile(`${root}/VOX.INI`, new TextEncoder().encode(lines.join("\r\n")));
+  said.push(`VOX.INI: 640 x 480, the best detail but Debris Normal${control ? ", " + control : ""}${vox ? "" : " (made)"}`);
+  return `Terminal Velocity's settings: ${said.join("; ")}`;
+}
+
+// Raptor's own settings made for the browser at each launch (src/cpu/wcnet_rap.cpp; docs/raptor.md): SETUP.INI as
+// SETUP.EXE writes it (RAP.EXE will not start without one) when there is none: the Sound Blaster for the music (its FM)
+// and the effects, at the machine's 220, IRQ 7, DMA 1; the control the keyboard and the mouse.
+const RAP_SETUP_INI = ["[Setup]", "Detail=1", "Control=0", "[Music]", "CardType=5", "BasePort=220", "Irq=7", "Dma=1",
+  "Volume=127", "[SoundFX]", "CardType=5", "BasePort=220", "Irq=7", "Dma=1", "Channels=4", "Volume=127", ""].join("\r\n");
+function rapPrepare(FS, root) {
+  let ini = null;
+  try { ini = new TextDecoder().decode(FS.readFile(`${root}/SETUP.INI`)); } catch (e) { /* none: made */ }
+  if (ini === null) {
+    FS.writeFile(`${root}/SETUP.INI`, new TextEncoder().encode(RAP_SETUP_INI));
+    return "Raptor's settings: SETUP.INI (the Sound Blaster for the music and the effects, the keyboard and the mouse)";
+  }
+  // A SETUP.INI that came with the game (Steam's 1994 Classic Edition: the music on General MIDI at port 330, which
+  // the browser has no synthesizer for; the effects on the Sound Blaster): its [Music] and [SoundFX] cards made the
+  // machine's Sound Blaster (220, IRQ 7, DMA 1), everything else (the keys, the volumes, the detail) kept.
+  const lines = ini.split(/\r?\n/);
+  const section = (name) => {
+    const a = lines.findIndex((l) => l.trim().toLowerCase() === `[${name.toLowerCase()}]`);
+    if (a < 0) return null;
+    let b = lines.findIndex((l, i) => i > a && /^\s*\[/.test(l));
+    if (b < 0) b = lines.length;
+    return [a, b];
+  };
+  const value = (name, key) => {
+    const r = section(name);
+    if (!r) return null;
+    for (let i = r[0] + 1; i < r[1]; i++) { const m = /^\s*(\w+)\s*=\s*(.*?)\s*$/.exec(lines[i]); if (m && m[1].toLowerCase() === key.toLowerCase()) return m[2]; }
+    return null;
+  };
+  const put = (name, key, v) => {
+    let r = section(name);
+    if (!r) { lines.push(`[${name}]`); r = [lines.length - 1, lines.length]; }
+    for (let i = r[0] + 1; i < r[1]; i++) { if (new RegExp(`^\\s*${key}\\s*=`, "i").test(lines[i])) { lines[i] = `${key}=${v}`; return; } }
+    lines.splice(r[0] + 1, 0, `${key}=${v}`);
+  };
+  let said = "";
+  for (const name of ["Music", "SoundFX"]) {
+    if (value(name, "CardType") === "5" && value(name, "BasePort") === "220" && value(name, "Irq") === "7" && value(name, "Dma") === "1") continue;
+    put(name, "CardType", "5"); put(name, "BasePort", "220"); put(name, "Irq", "7"); put(name, "Dma", "1");
+    said += (said ? " and " : "") + (name === "Music" ? "the music" : "the effects");
+  }
+  if (!said) return "";
+  FS.writeFile(`${root}/SETUP.INI`, new TextEncoder().encode(lines.join("\r\n")));
+  return `Raptor's settings: ${said} on the Sound Blaster (the SETUP.INI that came with the game had another card)`;
+}
+
 export const GAMES = [
   { id: "wc1", tag: "WC1", title: "Wing Commander", detect: ["WC.EXE"], run: "wc", multiplayer: true,
     build: { para: 0x1231, off: 0x0187, text: "Loading WING COMMANDER" },
-    saves: ["GAMEDAT/SAVEGAME.WLD"], cycles: 3630, fps: WC1_FPS, capHull: true, joystick: true,
+    saves: ["GAMEDAT/SAVEGAME.WLD"], cycles: 3630, fps: WC1_FPS, capHull: true, joystick: true, prepare: wc1MusicOnFm,
     pointer: { fromGame: true },
     campaign: { series: WC1_SERIES, hints: WC1_HINTS } },
   // SM2.EXE is the game's last build, with the Crusade campaign (it can
@@ -397,7 +669,7 @@ export const GAMES = [
   // mission is one of Crusade's.
   { id: "wc1sm2", tag: "SM2", partOf: "wc1", title: "Wing Commander: The Secret Missions 2", detect: ["SM2.EXE"], run: "sm2", multiplayer: true,
     build: { para: 0x11E8, off: 0x0181, text: "Loading WING COMMANDER" },
-    saves: ["GAMEDAT/CRUSADE.WLD"], cycles: 3630, fps: WC1_FPS, capHull: true, joystick: true,
+    saves: ["GAMEDAT/CRUSADE.WLD"], cycles: 3630, fps: WC1_FPS, capHull: true, joystick: true, prepare: wc1MusicOnFm,
     pointer: { fromGame: true },
     campaign: { series: SM2_SERIES, hints: WC1_HINTS } },
   // A picked mission of Wing Commander II starts in the barracks (a
@@ -477,10 +749,13 @@ export const GAMES = [
   // EMS for the extender, a Sound Blaster 16 on IRQ 7).  Single-player
   // until its hooks are built (docs/tiefighter.md).
   { id: "tf", tag: "TF", title: "TIE Fighter", detect: ["TIE.EXE"], run: "tie", multiplayer: true,
-    image: "game.gog", keep: ["IMUSE.INI"], cycles: 60000, campaign: TF_CAMPAIGN, noRoomOptions: true, screen: [640, 480], prepare: tfMusicOnFm,
+    // (cycles: DOSBox's automatic ones up to 60,000, the user: "the sound was very choppy at the base until I hit
+    // CNTRL-F11 three times"; measured in headless Chrome, a fixed 60,000 ran the concourse at 75% of real time and the
+    // flight at 86 to 88%, the sound starved; automatic, 100% everywhere at some 32,000 to 55,000)
+    image: "game.gog", keep: ["IMUSE.INI", ...TF_ICONS], cycles: 60000, cyclesAuto: true, campaign: TF_CAMPAIGN, noRoomOptions: true, screen: [640, 480], prepare: tfPrepare,
     // (the launcher's own words: the hooks find the game's program in memory by its bytes, not by this file)
     build: { text: "Loading TIE-Fighter CD" },
-    help: "TIE Fighter flown together: everybody in the room flies the same mission, each in a craft of the player's flight group (or the craft that pairs with it, for a mission flown alone), and sees the others where they really are. The craft near a pilot are flown by that pilot's machine, the rest by the host's; every shot is seen by everybody, a hit is decided by the shooter's machine and applied by the machine flying the craft hit, and a kill counts for the pilot who made it. A pilot down or the host's flight over ends the flight for everybody, mission failed: Fly Mission Again at the debriefing. A callsign with DEMO in it gives that pilot's craft to a wingman that flies itself (stays clear of mines and capital ships, attacks what attacks the other pilot or what it targets, else keeps to its wing): two-player tests with one person. The host decides: a guest's launch waits until the host flies, and the ship's PA calls a guest to the briefing. In a room the Combat Chamber's T/F row is the Z-95 challenge: two Z-95 Headhunters, hopelessly outgunned, flying the gunboat's and the T/I's missions against the Empire's own craft, the radio speaking for the other side in the game's own lines and voices. The host may pick a mission for everybody in the room's menu, any of the Combat Chamber's and any battle's: launching any Combat Chamber mission then flies it, briefing and all (the host may change it between flights). With none picked, a guest's Combat Chamber launch flies the host's; the line over the game says where the others are and when the host launches. The tour's own battles stay each pilot's own. Space skips the opening; at the registration desk type a pilot's name (or click one) and take the door; in flight the mouse is the stick and its button (or Space) fires, Backspace is full throttle, and in flight 0 opens the comms prompt (Enter sends the line to the room). What is done and what comes next: docs/tiefighter.md.",
+    help: "TIE Fighter flown together: everybody in the room flies the same mission, each in a craft of the player's flight group (or the craft that pairs with it, for a mission flown alone), and sees the others where they really are. The craft near a pilot are flown by that pilot's machine, the rest by the host's; every shot is seen by everybody, a hit is decided by the shooter's machine and applied by the machine flying the craft hit, and a kill counts for the pilot who made it. A pilot down or the host's flight over ends the flight for everybody, mission failed: Fly Mission Again at the debriefing. A callsign with DEMO in it gives that pilot's craft to a wingman that flies itself (stays clear of mines and capital ships, attacks what attacks the other pilot or what it targets, else keeps to its wing): two-player tests with one person. The host decides: a guest's launch waits until the host flies, and the ship's PA calls a guest to the briefing. In a room the Combat Chamber's T/F row is the Z-95 challenge: two Z-95 Headhunters, hopelessly outgunned, flying the gunboat's and the T/I's missions against the Empire's own craft, the radio speaking for the other side in the game's own lines and voices. The host may pick a mission for everybody in the room's menu, any of the Combat Chamber's and any battle's: launching any Combat Chamber mission then flies it, briefing and all (the host may change it between flights). With none picked, a guest's Combat Chamber launch flies the host's (the page's log says where the others are; over the game only the PA's call, the pilots' words and a launch waiting for the host). The tour's own battles stay each pilot's own. Space skips the opening; at the registration desk type a pilot's name (or click one) and take the door; in flight the mouse is the stick and its button (or Space) fires, Backspace is full throttle, and in flight 0 opens the comms prompt (Enter sends the line to the room). What is done and what comes next: docs/tiefighter.md.",
     // the flight's controls as the emulator gives them (src/cpu/wcnet_tie_controls.cpp; the "Flight" choice beside Controller)
     keys: "<b>TIE Fighter in flight:</b> the arrow keys steer (a tap turns a little, held they build to the full turn in a third of a second; <kbd>Shift</kbd> with an arrow turns at full at once; <kbd>Up</kbd> dives as a stick pushed forward), the keypad's <kbd>Ins</kbd> and <kbd>Del</kbd> roll. The mouse, as the <b>Flight</b> choice beside Controller has it: <i>point to aim</i> (a ring shows the pointer; the middle is still, the further the pointer the faster the turn, as in Wing Commander and RetroVega; the craft turns and climbs without banking, and the right button held with the mouse moved across rolls), <i>point to aim, banking</i> (the same with the game's own bank into each turn), <i>drag to steer</i> (the game's own, 1994), or nothing (the keyboard alone, or a joystick: a controller picked above, which also rolls and fires); <kbd>F12</kbd> in flight switches between the first four. <kbd>Space</kbd> or the left button fires (Space is still the game's when it asks for it: <kbd>Shift</kbd>+<kbd>S</kbd> then <kbd>Space</kbd> calls reinforcements); <kbd>0</kbd> opens the comms prompt in flight, <kbd>Enter</kbd> sends; <kbd>W</kbd> (held a moment) changes weapon, <kbd>Backspace</kbd> full throttle, <kbd>\\</kbd> none, <kbd>[</kbd> and <kbd>]</kbd> a third and two thirds; <kbd>T</kbd> and <kbd>R</kbd> target; <kbd>Esc</kbd> the game's options.",
     dosbox: "[dosbox]\nmachine=svga_s3\nmemsize=16\n[dos]\nxms=true\nems=true\numb=true\n[sblaster]\nsbtype=sb16\nirq=7\ndma=1\nhdma=5\n" },
@@ -492,7 +767,7 @@ export const GAMES = [
   // Flown together loosely (docs/privateer.md: rooms of up to 8, `maxSeats`, everybody's own career, presence and the
   // others' ships near by so far;
   // src/cpu/wcnet_priv_session.cpp); the emulator ramps its arrow keys (src/cpu/wcnet_priv_controls.cpp).
-  { id: "priv", tag: "PRV", title: "Wing Commander: Privateer", detect: ["PRCD.EXE"], run: "priv", multiplayer: true, maxSeats: 8,
+  { id: "priv", tag: "PRV", title: "Wing Commander: Privateer", short: "Privateer", detect: ["PRCD.EXE"], run: "priv", multiplayer: true, maxSeats: 8,
     image: "GAME.GOG", cycles: 30000, saves: ["*.SAV"], noFlight: true, noRoomOptions: true, prepare: privMusicOnFm,
     build: { para: 0x6E4D, off: 0x0074, text: "Type PRIV to run Privateer" },
     help: "Privateer flown together loosely, rooms of up to 8: everybody plays their own career, goes where they like and keeps their own saved games. Each pilot's system and place goes to the room when they launch, land, jump, engage the autopilot (A), and every 15 s; a line over the game says who is in your system and how far. Near each other you see each other's ships as the ships they fly, and a nav point's encounter is run by one pilot's game and shown to the others: everybody fights the same pirates, your hits count, and a wing about to spawn gets up to 3 more ships when several of you are there. A mission's nav points wait for the pilot who has the mission, and what flies with a pilot (an escort's charge) is seen by all. Talking: in flight press 0, type, Enter: the line shows on the others' message bar under your face (the Face box above, in the room), said by your ship when it is near; at a base use the room's chat beside this panel. Cargo you expel can be tractored by the others. Esc skips the opening; NEW registers a pilot (a name and a callsign, Enter after each); click your ship on the landing pad to launch. Save in a base with the Quine 4000's SAVE: the page keeps your saved games in this browser.",
@@ -504,6 +779,69 @@ export const GAMES = [
     build: { para: 0x6E4D, off: 0x0074, text: "Type PRIV to run Privateer" },
     help: "Righteous Fire, Privateer's sequel campaign, flown together the way Privateer is (rooms of up to 8, each pilot its own career, where everybody is told). It starts from a pilot of its own (a new one, or a Privateer pilot who finished the game). The page keeps your saved games in this browser.",
     dosbox: "[dosbox]\nmachine=svga_s3\nmemsize=16\n[dos]\nxms=true\nems=true\numb=true\n[sblaster]\nsbtype=sb16\nirq=5\ndma=1\nhdma=5\n" },
+  // Terminal Velocity (Terminal Reality / 3D Realms, 1995): the shareware zip as 3D Realms released it (its split
+  // archive unpacked by expandSplitZips), the game's installed directory, or the registered game as GOG sells it
+  // (setup_terminal_velocity_1.2_*.exe, the CD-ROM edition: three episodes in CDROM.POD, the cinematics in TVI\, where
+  // CDROM.INI says they are: kept though an .ini; its GAME.EXE another compile of the same code, found by the same
+  // signatures and one variant, scripts/tvsig.py).  TV.EXE loads the sound driver and runs
+  // GAME.EXE, a 32-bit program bound with DOS/4G that the hooks find in memory by its code (src/cpu/wcnet_tv.cpp).
+  // Flown together: the host's level for everybody, each pilot's ship in the others' games as the host's Craft menus
+  // choose, hits and kills and the level's craft shared (docs/terminalvelocity.md).  The machine of its own setup: an
+  // S3 for its 640 x 480 mode, a Sound Blaster 16 at 220, IRQ 5.  55,000 cycles: with its pixels drawn natively
+  // (wcnet_tv_span.cpp) and its frames capped at 60 a second, two pages on one 5-core machine keep 100% of real time
+  // at 54-55 frames a second (60,000: 97-98%, the same frames a wall second).
+  { id: "tv", tag: "TV", title: "Terminal Velocity", detect: ["TV.EXE"], run: "tv", multiplayer: true, maxSeats: 4,
+    build: { text: "Terminal Velocity Operating System" },
+    cycles: 55000, screen: [640, 480], noFlight: true, noRoomOptions: true, joystick: true, prepare: tvPrepare,
+    keep: ["CDROM.INI", "VOX.INI"],
+    // (what the game reads, wherever the archive has it: the program proper, the archives, the episodes' lists, the
+    // sound drivers, the settings; the registered game's cinematics belong in TVI\)
+    gather: [{ name: /^(GAME|SETUP|COMMIT)\.EXE$/i }, { name: /\.(POD|VOX|COM|ADV)$/i }, { name: /^(SETUP\.CFG|VOX\.INI|CDROM\.INI)$/i },
+             { name: /^SAVE.*\.DAT$|^SCORE\.DAT$/i }, { name: /\.TVI$/i, to: "TVI/" }],
+    saves: ["SAVE*.DAT", "SCORE.DAT", "VOX.INI"],
+    help: "Terminal Velocity flown together: the host plays the game as it comes (New Game, an episode, a difficulty) and everybody else flies the host's level with them: a guest's game waits for the host's launch, then flies the same level at the same difficulty. The shareware (episode one) and the registered game (all three episodes: drop GOG's installer or a zip of the game's folder) fly together in episode one; a shareware pilot waits out a level of the other episodes. Everybody sees everybody else's ship (the host picks each pilot's craft in the room: the TV-202, a craft of the game's own, or the level's own); every hit and kill counts in every game, and the level's craft are flown by the nearest pilot's machine. Whoever flies the exit ends the level for everybody (the statistics: Space for the next level). A pilot who dies can retry: the level is flown again as it stands, what was destroyed stays destroyed. The afterburner (held Alt, once you have fuel for it) shows to the others as a flame. Pick a controller \"Built in\" (above) for the game's own gamepad control.",
+    keys: "<b>Terminal Velocity in flight:</b> the arrow keys steer, <kbd>A</kbd> and <kbd>Z</kbd> set the speed, <kbd>Space</kbd> fires, <kbd>1</kbd> to <kbd>7</kbd> pick a weapon, <kbd>Alt</kbd> held the afterburner (when you have picked one up), the keypad's <kbd>7</kbd> and <kbd>9</kbd> roll; <kbd>B</kbd> changes the view; <kbd>0</kbd> opens the comms prompt (<kbd>Enter</kbd> sends the line to the others' screens); <kbd>Esc</kbd> the game's menu. A controller picked \"Built in\": the stick steers, button 1 fires, button 2 the afterburner, buttons 3 and 4 the speed.",
+    dosbox: "[dosbox]\nmachine=svga_s3\nmemsize=32\n[dos]\nxms=true\nems=true\numb=true\n[sblaster]\nsbtype=sb16\nirq=5\ndma=1\nhdma=5\n" },
+  // Raptor: Call of the Shadows (Cygnus Studios / Apogee, 1994): the shareware zip as Apogee released it (1rap12.zip:
+  // its installer and RAPSW12.SHR, unpacked by expandSplitZips) or the game's installed directory.  The registered game
+  // (Steam's 1994 Classic Edition: its folder zipped, "Browse local files"; a Steam *backup* is chunks without file
+  // names, no use) is another build of 1.2 that the same signatures find (scripts/rapsig.py checks both programs):
+  // three sectors, FILE0002 to FILE0004.GLB; it will not start without its FILE_ID.DIZ.  RAP.EXE is a
+  // 32-bit program bound with DOS/4GW that the hooks find in memory by its code (src/cpu/wcnet_rap.cpp).  Flown
+  // together, up to four pilots: the host's wave for all, launched together; each pilot's own ship, weapons, money and
+  // shop; the enemies' and the ground's damage shared, the money the killer's, each game's bonuses its own pilot's; a
+  // pilot shot down the end for all; each ship's stripes its seat's colour (docs/raptor.md).  The game runs 23 frames a second by its own clock.
+  { id: "rap", tag: "RAP", title: "Raptor: Call of the Shadows", short: "Raptor", detect: ["RAP.EXE"], run: "rap", multiplayer: true, maxSeats: 4,
+    build: { text: "ENEMY_Think() - Invalid ANIMTYPE1" },
+    cycles: 40000, screen: [320, 200], noFlight: true, noRoomOptions: true, prepare: rapPrepare,
+    // (the game's archives -- FILE0000 and FILE0001 the shareware's, FILE0002 to FILE0004 the registered game's other
+    // sectors -- FILE_ID.DIZ, which the registered game will not start without ("Critical file FILE_ID.DIZ missing
+    // or modified"), the setup and the saved pilots, wherever the archive has them)
+    keep: ["SETUP.INI"],
+    gather: [{ name: /^FILE\d{4}\.GLB$/i }, { name: /^FILE_ID\.DIZ$/i }, { name: /^SETUP\.(EXE|INI)$/i }, { name: /^CHAR\d*\.FIL$/i }],
+    saves: ["CHAR*.FIL", "SETUP.INI"],
+    help: "Raptor flown together: each pilot plays a game of their own (a new pilot or a saved one, their own ship, weapons, money and shop), and the waves are flown together: when a pilot chooses a sector at the ship computer (the hangar's Fly Mission), their game waits there for the other, then both fly the host's wave. Both ships are on both screens (the other pilot's with blue engine flames, yours with the game's own, each casting its shadow); the enemies are the same, and what either pilot shoots down is shot down in both games: the money goes to whoever did it, and each pilot picks up their own bonuses. If either pilot is shot down, the mission is over for both. The shareware (the Bravo sector) and the registered game (all three sectors: a zip of the game's folder, from Steam's Browse local files) fly Bravo together; a shareware pilot cannot follow into the other two (Esc there flies their own wave alone).",
+    keys: "<b>Raptor:</b> the arrow keys fly the ship (the mouse is for its menus), <kbd>Ctrl</kbd> fires, <kbd>Alt</kbd> fires the special weapon, <kbd>Space</kbd> picks the next special weapon, the right <kbd>Shift</kbd> the mega bomb; <kbd>Esc</kbd> aborts the mission (the other pilot flies on alone), <kbd>P</kbd> pauses. A controller picked above: the left stick or the D-pad flies the ship, A fires, B the special weapon, X the next special, Y the mega bomb, Start pauses, Back is Esc; in the menus the stick moves the pointer and A clicks (the D-pad and Start, Enter, work them as the keys do).",
+    dosbox: "[dosbox]\nmachine=svga_s3\nmemsize=16\n[dos]\nxms=true\nems=true\numb=true\n[sblaster]\nsbtype=sb16\nirq=7\ndma=1\nhdma=5\n" },
+  // The TIE Fighter demo (LucasArts, early 1994: one mission, flown in a build from before the game's release, given
+  // away to advertise the Dodge Neon): its two floppies (the Internet Archive's TIE_Fighter_Preview__Dodge_Neon.zip,
+  // the step 1 button's, fetched from its CORS address; or DOS Games Archive's tiedemo.zip dropped), unpacked by
+  // expandSplitZips and web/pvm.js as its installer
+  // does, or its installed directory.  The first release opens in the Neon's showroom (NEON.EXE: its introduction run
+  // ahead by the layer, wcnet_tiedemo.cpp).  TIEDEMO.BAT runs the opening
+  // (DEMO.EXE), the mission (TIEMISS.EXE: a 16-bit real-mode program, EMS for its music, sound and cockpits) and the
+  // ending.  Flown together (src/cpu/wcnet_tiedemo*.cpp: the CD version's session, ported): launched together, each
+  // pilot in its own craft of T/F Alpha (rooms of up to 3), the battle shared (each craft flown by one machine, the
+  // others' copies following its reports), shots, hits and deaths shared, a pilot down the end for all.  After the
+  // demo's own mission, three more (src/cpu/wcnet_tiedemo_campaign.cpp: written over the mission the game reads, the
+  // layer's; the game's files unchanged): docs/tiedemo.md section 8.
+  { id: "tiedemo", tag: "TFD", title: "TIE Fighter (the 1994 demo)", short: "TIE Fighter demo", detect: ["TIEMISS.EXE"], run: "tiedemo", multiplayer: true, maxSeats: 3,
+    build: { text: "TIE Fighter Demo V1.0 12/04/93" },
+    cycles: 30000, screen: [320, 200], noFlight: true, noRoomOptions: true, prepare: tdPrepare,
+    saves: ["OPTIONS.CFG"],
+    help: "The TIE Fighter demo of early 1994, the one given away with the Dodge Neon: a single mission (T/F Alpha against the Rebel repair yard at Remitik, the Rebels fleeing Hoth after), in a build from before the game's release. Here it is the first of four: win it and you fly on, the same game with new missions written in by this page: The Shuttles Run (TIE interceptors after a dozen fleeing shuttles, X-wings and Y-wings in the way), Corvette Hunt (TIE bombers with proton torpedoes against four corvettes) and Escort the Prowlers (TIE fighters against waves of Y-wings, and whatever comes after). A mission failed or a pilot down: that mission again. It opens in the Dodge Neon's showroom (click Go to game, or press any key but Esc: Esc there leaves the demo), then the opening plays (Esc skips it), then the missions, then the ending, and back to the showroom. The TIE Fighter demo button under step 1 fetches it from the Internet Archive once (TIE_Fighter_Preview__Dodge_Neon.zip, the preview's two floppies, 1.7 MB), installs it as its installer does and keeps it in this browser; its zip dropped on step 1 works too. Flown together, up to 3 pilots: everybody's mission starts at the same moment (the host's game waits at the end of the opening until everybody has got there), each pilot flies their own TIE fighter of T/F Alpha, and the battle is one battle: the same Rebels in the same places on every screen, every shot seen by everybody, every hit counted where it lands, a craft destroyed for one destroyed for all. If a pilot is shot down, the flight ends for everybody a moment later.",
+    keys: "<b>TIE Fighter demo in flight:</b> the arrow keys steer (a tap turns a little, held they build to the game's own keyboard turn in a third of a second; <kbd>Shift</kbd> with an arrow is the whole stick at once, the mouse's sharpest turn; <kbd>Up</kbd> dives as a stick pushed forward), the keypad's <kbd>Ins</kbd> and <kbd>Del</kbd> roll. The mouse, as the <b>Flight</b> choice beside Controller has it: <i>point to aim</i> (the default: a ring shows the pointer; the middle is still, the further the pointer the faster the turn; the craft turns and climbs without banking, and the right button held with the mouse moved across rolls), <i>point to aim, banking</i> (the same with the game's own bank into each turn), <i>drag to steer</i> (the game's own, 1994: the right button held a moment with the mouse moved across rolls, a click picks a target), or nothing (the keyboard alone, or a joystick: a controller picked above, which also rolls and fires); <kbd>F12</kbd> in flight switches between the first four. <kbd>Space</kbd> or the left button fires; <kbd>+</kbd> and <kbd>-</kbd> the throttle, <kbd>Backspace</kbd> full, <kbd>\\</kbd> none, <kbd>[</kbd> and <kbd>]</kbd> a third and two thirds; <kbd>X</kbd> single, dual or quad fire, <kbd>F9</kbd> the lasers' recharge rate; <kbd>R</kbd> the nearest enemy fighter, <kbd>T</kbd> and <kbd>Y</kbd> the next and previous target, <kbd>U</kbd> the ship in the sight; <kbd>W</kbd> the bomber's proton torpedoes (and back to the lasers); <kbd>Space</kbd> is still the game's when the onboard computer suggests something (it approves); <kbd>Ctrl</kbd> the threat display; the keypad's digits look around. <kbd>Esc</kbd> is kept from the game (it would end the demo at once, back to DOS), so it only leaves full screen.",
+    dosbox: "[dosbox]\nmachine=svga_s3\nmemsize=16\n[dos]\nxms=true\nems=true\numb=true\n[sblaster]\nsbtype=sb16\nirq=7\ndma=1\nhdma=5\n" },
 ];
 
 // The registry entry of a game id, or null (a game picked by its executable).
@@ -551,10 +889,50 @@ export function knownBuild(game, files) {
   return true;
 }
 
-// Directories and file types an installer leaves behind that a DOS game
-// never reads (GOG's own DOSBox, redistributables, manuals, icons).
+// The Wing Commanders GOG sells since 2026-11-05 are packs, "Wing Commander: 35th Anniversary Edition" and "Wing
+// Commander II: Vengeance of the Kilrathi: 35th Anniversary Edition" (installers of 1.1 GB and 850 MB), each with the
+// release sold until then beside it in the buyer's library: "Wing Commander - Legacy Edition" (an installer of 34 MB)
+// and "Wing Commander II - Legacy Edition" (27 MB).  An Anniversary Edition's installer holds the Legacy Edition's
+// game, byte for byte, in its DOS/ directory (beside a Windows version, Kilrathi_Saga/, and a patched one, WCAT/):
+// the page unpacks only that (inno-worker.js), so either installer is the game.  The old "Wing Commander 1+2" store
+// page is gone.  A Wing Commander that is neither gets the advice below (the user, 2026-11-15: "If you detect a
+// strange version can you instruct the user to download Legacy Edition from GOG instead", then, with the
+// Anniversary installers: "Ideally we just make them work").
+export const LEGACY = {
+  wc1: { title: "Wing Commander", legacy: "Wing Commander - Legacy Edition",
+         pack: "Wing Commander: 35th Anniversary Edition", url: "https://www.gog.com/en/game/wing_commander_35th_anniversary_edition" },
+  wc2: { title: "Wing Commander II", legacy: "Wing Commander II - Legacy Edition",
+         pack: "Wing Commander II: 35th Anniversary Edition", url: "https://www.gog.com/en/game/wing_commander_ii_vengeance_of_the_kilrathi_35th_anniversary_edition" },
+};
+// Which of the two a dropped file is, by its name and by what is in it: "wc1", "wc2" or "" (neither: the later Wing
+// Commanders and Privateer are games of their own).  For a file the page could not make a known game of.
+export function legacyOf(name, files = []) {
+  const names = new Set(files.map((f) => base(f.path.replace(/\\/g, "/")).toUpperCase()));
+  if (["WC2.EXE", "SO1.EXE", "SO2.EXE", "ALTSHIPS.000", "ARTDATA.V00"].some((n) => names.has(n))) return "wc2";
+  if (["WC.EXE", "SM2.EXE"].some((n) => names.has(n)) || (names.has("CAMP.000") && names.has("BRIEFING.000"))) return "wc1";
+  const n = String(name || "").toLowerCase();
+  if (!/wing[\s_.-]*commander/.test(n) || /commander[\s_.-]*(iii|iv|[345])(?![a-z\d])|privateer|armada|academy|prophecy|saga/.test(n)) return "";
+  return /commander[a-z]*[\s_.-]*(ii|2)(?![a-z\d])|vengeance/.test(n) ? "wc2" : "wc1";
+}
+// What to tell the pilot: the words, and the store page they name.
+export function legacyAdvice(which) {
+  const l = LEGACY[which];
+  return l ? { text: `This page flies GOG's release: drop the installer of ${l.pack}, or of "${l.legacy}" (which comes with it), as you downloaded it from your GOG library.`,
+               link: l.url, linkText: `${l.title} on GOG` } : null;
+}
+
+// What an installer leaves beside a game that the game never reads: its folders (GOG's own DOSBox, the
+// redistributables, GOG's support files, the installer's temporary files), GOG's metadata files (goggame-*, the
+// launcher's webcache.zip), documents and shortcuts (manuals as PDF, .lnk, .url) and Windows libraries (.dll: no DOS
+// program loads one).  Everything else under the game's folder is kept, whatever its name: a game's own files can
+// look like an installer's (TIE Fighter's map icons are RESOURCE\ICONS640.ICO and MAPICONS.ICO; the user,
+// 2026-11-15: "I suspect all files are actually needed that are there in the first place").  Measured over every
+// installer the page takes (GOG's TIE Fighter, Wing Commander 1.01 and its 35th Anniversary Edition, Wing Commander
+// II's, Privateer, Terminal Velocity, Steam's Raptor): what this leaves out under the game's folder is manuals, GOG's
+// metadata and DOSBox alone.
 const JUNK_DIRS = new Set(["dosbox", "__redist", "__support", "commonappdata", "tmp", "__macosx"]);
-const JUNK_EXT = new Set(["pdf", "ico", "dll", "lnk", "url", "hashdb", "info", "script", "jpg", "jpeg", "png", "gif", "html", "htm", "inf", "ini", "zip", "gz", "tar"]);
+const JUNK_EXT = new Set(["pdf", "lnk", "url", "dll"]);
+const JUNK_NAME = /^(goggame-\d+\.(ico|hashdb|info|script|dll)|webcache\.zip|goglog\.ini)$/i;
 
 // -- zip ---------------------------------------------------------------------
 
@@ -566,8 +944,12 @@ export async function readZip(bytes) {
   }
   if (eocd < 0) throw new Error("not a zip file (no end-of-central-directory record)");
   const count = dv.getUint16(eocd + 10, true);
+  const cdSize = dv.getUint32(eocd + 12, true);
   let off = dv.getUint32(eocd + 16, true);
   if (off === 0xffffffff) throw new Error("zip64 archives are not supported");
+  // (a zip with bytes before it, an installer's header or a stub: its offsets count from the zip's own start)
+  const shift = eocd - cdSize - off > 0 ? eocd - cdSize - off : 0;
+  off += shift;
   const files = [];
   for (let n = 0; n < count; n++) {
     if (dv.getUint32(off, true) !== 0x02014b50) throw new Error("corrupt zip central directory");
@@ -578,7 +960,7 @@ export async function readZip(bytes) {
     const nlen = dv.getUint16(off + 28, true);
     const elen = dv.getUint16(off + 30, true);
     const clen = dv.getUint16(off + 32, true);
-    const local = dv.getUint32(off + 42, true);
+    const local = dv.getUint32(off + 42, true) + shift;
     const utf8 = (flags & 0x800) !== 0;
     const name = new TextDecoder(utf8 ? "utf-8" : "latin1").decode(bytes.subarray(off + 46, off + 46 + nlen));
     off += 46 + nlen + elen + clen;
@@ -608,7 +990,10 @@ export function looksLikeInstaller(bytes) {
   return bytes.length > 2 && bytes[0] === 0x4d && bytes[1] === 0x5a; // "MZ"
 }
 
-export function extractInstaller(bytes, onLog) {
+// (the installer: a File, read by the worker where it is, or its bytes)
+export function extractInstaller(file, onLog) {
+  const blob = file instanceof Blob ? file : new Blob([file]);
+  const detect = [...new Set(GAMES.filter((g) => !g.partOf).flatMap((g) => g.detect))];
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./inno-worker.js", import.meta.url), { type: "module" });
     worker.onmessage = (ev) => {
@@ -618,7 +1003,7 @@ export function extractInstaller(bytes, onLog) {
       else if (m.type === "error") { worker.terminate(); reject(new Error(m.message)); }
     };
     worker.onerror = (e) => { worker.terminate(); reject(new Error("installer extraction failed: " + (e.message || e))); };
-    worker.postMessage({ type: "extract", bytes }, [bytes.buffer]);
+    worker.postMessage({ type: "extract", blob, detect });
   });
 }
 
@@ -634,7 +1019,7 @@ function isJunk(path) {
   const parts = path.split("/");
   if (parts.slice(0, -1).some((d) => JUNK_DIRS.has(d.toLowerCase()))) return true;
   if (KEEP.has(base(path).toUpperCase())) return false;
-  return JUNK_EXT.has(ext(path));
+  return JUNK_EXT.has(ext(path)) || JUNK_NAME.test(base(path));
 }
 
 // Finds the game among the files: the known executable closest to the top
@@ -648,8 +1033,11 @@ export function identifyGame(files) {
     for (const f of normalized) {
       if (isJunk(f.path)) continue;
       if (game.detect.includes(base(f.path).toUpperCase())) {
+        // (the build the hooks know before another program of its name: GOG's Anniversary Editions hold the DOS
+        // game and a Windows one, WC2.EXE both, as deep)
         const depth = f.path.split("/").length;
-        if (!best || depth < best.depth) best = { game, root: dir(f.path), depth };
+        const known = knownBuild(game, [{ path: base(f.path), data: f.data }]);
+        if (!best || (known && !best.known) || (known === best.known && depth < best.depth)) best = { game, root: dir(f.path), depth, known };
       }
     }
   }
@@ -661,7 +1049,68 @@ export function identifyGame(files) {
   const gameFiles = normalized
     .filter((f) => f.path.startsWith(prefix) && !isJunk(f.path.slice(prefix.length)))
     .map((f) => ({ path: f.path.slice(prefix.length), data: f.data }));
-  return { game: best.game, root: best.root, files: gameFiles };
+  const gathered = gatherFiles(best.game, best.root, normalized, gameFiles);
+  return { game: best.game, root: best.root, files: gameFiles, gathered };
+}
+
+// A game whose files are not all beside its program (the user, 2026-11-15: "very loose on finding the .EXE and
+// supporting files so that if users compress one level deeper or shallower or with different subfolder names or from
+// their original DOS backups it still works ... a find/search sort of situation to ground ourselves in whatever zip
+// is passed").  The program is already found wherever it is, its folder the game's; here every file the game wants
+// by name (the registry's `gather`: a pattern for the name, and the game's folder it belongs in, "" its top) that is
+// not where the game looks is searched for through the whole archive, any folder, any case, and put there: of
+// several, the one nearest the program (under its folder first, then the longest shared path, then the shallowest).
+// Returns what was moved, for the page's log.
+function gatherFiles(game, root, all, gameFiles) {
+  const rules = game.gather || [];
+  if (!rules.length) return [];
+  const have = new Set(gameFiles.map((f) => f.path.toUpperCase()));
+  const rootParts = root ? root.split("/") : [];
+  const near = (path) => {
+    const parts = dir(path) ? dir(path).split("/") : [];
+    let shared = 0;
+    while (shared < parts.length && shared < rootParts.length && parts[shared].toUpperCase() === rootParts[shared].toUpperCase()) shared++;
+    // (under the program's folder: best; else the more of the path shared the better, the shallower the better)
+    return [shared === rootParts.length ? 0 : 1, -shared, parts.length];
+  };
+  const better = (a, b) => { const x = near(a), y = near(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
+  const picked = new Map();     // (where it belongs, upper case) -> the file
+  for (const f of all) {
+    const parts = f.path.split("/");
+    if (parts.slice(0, -1).some((d) => JUNK_DIRS.has(d.toLowerCase()))) continue;
+    const name = base(f.path);
+    const rule = rules.find((r) => r.name.test(name));
+    if (!rule) continue;
+    const to = (rule.to || "") + name;
+    if (have.has(to.toUpperCase())) continue;
+    const was = picked.get(to.toUpperCase());
+    if (!was || better(f.path, was.from)) picked.set(to.toUpperCase(), { to, from: f.path, data: f.data });
+  }
+  const out = [];
+  for (const g of picked.values()) {
+    gameFiles.push({ path: g.to, data: g.data });
+    out.push(`${g.from} -> ${g.to}`);
+  }
+  return out;
+}
+
+// Zips inside the dropped archive (a backup of a backup, a download wrapped once more): each that reads as a zip and
+// holds a program the registry knows is replaced by its files, in a folder of its name.  For an archive no game was
+// found in; the shareware's own inner zips (other games' adverts) hold no such program and stay as they are.
+export async function expandInnerZips(files) {
+  const known = new Set(GAMES.flatMap((g) => g.detect));
+  let out = files, n = 0;
+  for (const f of files) {
+    if (ext(f.path) !== "zip" || n >= 8) continue;
+    let inside;
+    try { inside = await readZip(f.data); } catch (e) { continue; }
+    inside = await expandSplitZips(inside);
+    if (!inside.some((g) => known.has(base(g.path.replace(/\\/g, "/")).toUpperCase()))) continue;
+    const at = f.path.replace(/\\/g, "/").replace(/\.zip$/i, "") + "/";
+    out = out.filter((g) => g !== f).concat(inside.map((g) => ({ path: at + g.path.replace(/\\/g, "/"), data: g.data })));
+    n++;
+  }
+  return out;
 }
 
 export function installFiles(FS, root, files) {

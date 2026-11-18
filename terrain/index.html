@@ -51,7 +51,7 @@
   h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 7px; font: 700 11px/1.2 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--green); }
   .head { display: flex; align-items: center; gap: 8px; min-height: 26px; margin-bottom: 7px; }
   .head h2 { margin: 0; }
-  .head .acts { display: flex; gap: 6px; margin-left: auto; }
+  .head .acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
   .head button { padding: 6px 12px; }
   h2 b { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; background: var(--amber); color: #1a1200; font-weight: 800; letter-spacing: 0;
     clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px); }
@@ -103,12 +103,23 @@
   #sourceButtons button { padding: 5px 9px; }
   /* the saved copies, one line: "Saved here: Wing Commander (3.2 MB, forget) · Wing Commander II (12 MB, forget)" */
   #savedList { color: var(--muted); font: 11.5px/1.45 system-ui, sans-serif; }
+  #demos { margin-top: 8px; }
+  #demos button { padding: 5px 9px; }
+  #demos .lead { color: var(--muted); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; }
+  #demos .hint { margin: 4px 0 0; }
+  #demos a, #sourceStatus a, #dropzone a { color: var(--amber); }
+  #demos a.dl { padding: 4px 9px; border: 1px solid var(--green2); background: #0a2015; color: var(--green); text-decoration: none; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  #demos a.dl:hover { background: #113a23; color: #c9ffdc; }
   #savedList:empty { display: none; }
   #savedList .saved { white-space: nowrap; cursor: help; }
   #sourceButtons button.link { padding: 0; border: 0; background: none; color: var(--amber); font: inherit; text-transform: none; letter-spacing: 0; clip-path: none; text-decoration: underline dotted; cursor: pointer; }
   #sourceButtons button.link:hover:not(:disabled) { color: #ffe07a; }
   #sourceButtons button.link:disabled { background: none; color: #41614f; }
   #programLabel select { max-width: 100%; }
+  #gameList { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; flex: 1 1 100%; }
+  #sourceButtons #gameList button { padding: 3px 8px; font-size: 10px; }
+  #sourceButtons #gameList button.on { background: var(--green2); color: #03130a; border-color: var(--green); cursor: default; }
+  #demos summary { cursor: pointer; color: var(--muted); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; }
   #pickerLabel, #programLabel { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; }
 
   /* the public lobby */
@@ -140,8 +151,20 @@
   #hallHint.warn { color: var(--amber); }
 
   /* the room */
-  #setup { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: flex-end; }
-  #setup label { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; }
+  #setup { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  /* (each box's name on its left, in one or two small lines: the room's settings on one row) */
+  #setup label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  #setup .tag, #pilotBar .tag { display: flex; flex-direction: column; color: var(--muted); font-size: 8.5px; line-height: 1.15; letter-spacing: .12em; text-transform: uppercase; }
+  /* (one box high: each box's name on its left in two small lines) */
+  #pilotBar { display: flex; flex-wrap: wrap; gap: 3px 16px; align-items: center; margin: 0 0 8px; padding: 3px 10px; border: 1px solid var(--line2); background: #06110c; }
+  #pilotBar label { display: flex; align-items: center; gap: 6px; }
+  #pilotBar input { width: 140px; height: 24px; }
+  #pilotBar input::placeholder { color: #8fc9a6; }
+  /* (a phone in portrait: still one row, sideways if it must; no height spent on a second line) */
+  @media (max-width: 600px) {
+    #pilotBar { flex-wrap: nowrap; overflow-x: auto; gap: 10px; padding: 3px 6px; }
+    #pilotBar input { width: 96px; }
+  }
   #room { width: 12ch; }
   #seats { width: 5ch; }
   #seatsLabel .boxrow { display: flex; align-items: center; gap: 4px; }
@@ -236,29 +259,45 @@
     <div class="acts"><span id="topNote" role="status"></span><button type="button" id="topAction" disabled title="The next step, wherever the page is scrolled to">Fly</button></div>
   </header>
 
+  <div id="pilotBar" title="Your name in the lobby and the rooms, and in the games that show one: the one given here until you type your own">
+    <label><span class="tag"><span>Callsign</span><span>(optional)</span></span><input type="text" id="callsign" placeholder="Maverick"></label>
+    <label id="firstnameLabel" title="The games that use a first name (Wing Commander II) take this one; the others leave it"><span class="tag"><span>Chosen</span><span>name</span></span><input type="text" id="firstname" placeholder="Christopher" maxlength="12"></label>
+    <label title="The games that use a surname take this one"><span class="tag"><span>Pilot</span><span>surname</span></span><input type="text" id="lastname" placeholder="Blair"></label>
+  </div>
+
   <div id="deck">
     <section id="source" class="panel">
-      <h2><b>1</b> Game files</h2>
+      <h2><b>1</b> Game</h2>
+      <div id="sourceButtons">
+        <label id="programLabel" hidden title="Every game this page can play; in a room everyone plays the host's">Game <select id="program"></select></label>
+        <button type="button" class="secondary" id="useServer" hidden>Use this server's copy</button>
+        <label id="pickerLabel" hidden>Unknown game; run <select id="exePicker"></select></label>
+        <span id="gameList" title="Every game this page plays together"></span>
+        <span id="savedList"></span>
+      </div>
       <div id="dropzone" tabindex="0">
         <span class="fresh"><strong>Bring your own game.</strong> Drop a <b>.zip</b> of your Wing Commander or Wing Commander II folder, or the GOG installer
-        (<code>setup_wing_commander_*.exe</code>), here, or</span><span class="loaded">RetroVega is built in (under the Play dropdown menu). Wing Commander or Wing Commander II: drop a <b>.zip</b> or GOG installer here, or</span>
+        (<code>setup_wing_commander_*.exe</code>: the
+        <a href="https://www.gog.com/en/game/wing_commander_35th_anniversary_edition" target="_blank" rel="noopener">35th Anniversary Edition</a>'s or the Legacy Edition's), here, or</span><span class="loaded">Your own game (it joins the Game menu): Wing Commander or Wing Commander II: drop a <b>.zip</b> or GOG installer here, or</span>
         <label class="pick"><input type="file" id="gamefile" accept=".zip,.exe,application/zip,application/octet-stream"> choose a file</label>.
         <span class="fresh">Nothing is uploaded: the files are unpacked and kept in this browser only.</span>
       </div>
       <div id="sourceStatus">No game files yet.</div>
-      <div id="sourceButtons">
-        <button type="button" class="secondary" id="useServer" hidden>Use this server's copy</button>
-        <label id="programLabel" hidden title="Every program of the games this browser holds; in a room everyone plays the host's">Play <select id="program"></select></label>
-        <label id="pickerLabel" hidden>Unknown game; run <select id="exePicker"></select></label>
-        <span id="savedList"></span>
-      </div>
+      <details id="demos">
+        <summary>Free games and where to get the full ones</summary>
+        <p class="hint">RetroVega, Raptor, Terminal Velocity and the TIE Fighter demo are free: pick one (the shareware and the demo are fetched then, and kept in this browser); the dim ones need your own files.
+          Exact shareware files (<a href="demos/1rap12.zip">1rap12.zip</a>, <a href="demos/3dtv12.zip">3dtv12.zip</a>).
+          Full games: <a href="https://store.steampowered.com/app/358360/" target="_blank" rel="noopener">Raptor, 1994 Classic Edition</a> (Steam: right-click it in your library, <b>Manage &rsaquo; Browse local files</b>, zip the folder; drop the zip on the box above).
+          <a href="https://www.gog.com/en/game/terminal_velocity_boosted_edition" target="_blank" rel="noopener">Terminal Velocity</a> (GOG: in the Boosted Edition go to "Terminal Velocity Legacy": drop its installer, <b>setup_terminal_velocity_1.2_&hellip;.exe</b>).
+          TIE Fighter demo: get the <a href="https://www.gog.com/en/game/star_wars_tie_fighter_special_edition" target="_blank" rel="noopener">full version</a> (GOG: drop its Collector's CD (1995) installer on the box above).</p>
+      </details>
     </section>
 
     <section id="hall" class="panel">
       <h2><b>&#9670;</b> Lobby <span id="hallState"></span></h2>
       <div id="hallTop">
         <button type="button" class="secondary" id="hallEnter">Enter the lobby</button>
-        <p class="hint" id="hallNote"><span id="hallNeeds">Pick a game under the Play dropdown menu (RetroVega is built in) or load Wing Commander or Wing Commander II (step 1) to enter: this page connects to the lobby only with a game to fly.</span> The public chat room (<code class="lobbyName">WC-LOBBY</code>; when it is full, <code class="lobbyName" data-n="0">WC-LOBBY0</code>, <code class="lobbyName" data-n="1">WC-LOBBY1</code> and so on) where pilots find somebody to fly with. It links your browser directly with the other pilots in it, as a game does.</p>
+        <p class="hint" id="hallNote"><span id="hallNeeds">Pick a game in the Game menu (step 1) to enter: this page connects to the lobby only with a game to fly.</span> The public chat room (<code class="lobbyName">WC-LOBBY</code>; when it is full, <code class="lobbyName" data-n="0">WC-LOBBY0</code>, <code class="lobbyName" data-n="1">WC-LOBBY1</code> and so on) where pilots find somebody to fly with. It links your browser directly with the other pilots in it, as a game does.</p>
       </div>
       <div id="hallBody" hidden>
         <div id="hallRoster"></div>
@@ -279,21 +318,20 @@
       <div class="head">
         <h2><b>2</b> Room</h2>
         <div class="acts">
-          <button type="submit" form="setup" id="join">Join room</button>
+          <button type="button" id="join">Host a room</button>
+          <button type="button" class="secondary" id="findRoom">Join open game</button>
           <button type="button" class="secondary" id="share" hidden title="Copies a link that lands a friend in this room">Copy link</button>
           <button type="button" class="secondary" id="leave" hidden title="Leave the room. While the game runs, leaving ends it and reloads the page (it asks first)">Leave room</button>
         </div>
       </div>
       <form id="setup">
-        <label title="A code of the page's own making starts with the game it is for (WC1, WC2, SM2, SO1, SO2, SO3)">Room code <input type="text" id="room" placeholder="WC1-4821" pattern="[A-Za-z0-9_\-]{4,64}" required></label>
-        <label id="seatsLabel" title="The seats of a room you make: 2; 3 (in beta) for a third pilot; 1 to fly the game alone, as it is, with its own wingman, its own menus and its saved games (only the controller is the page's; no lobby server, nobody else comes in), what a phone or a tablet starts at. Not remembered">Players <span class="boxrow"><input type="number" id="seats" min="1" max="3" step="1" value="2"><small class="beta" id="seatsBeta" hidden>beta</small></span></label>
-        <label>Callsign <input type="text" id="callsign" placeholder="Maverick"></label>
-        <label id="firstnameLabel" hidden>First name <input type="text" id="firstname" placeholder="Christopher" maxlength="12"></label>
-        <label>Last name <input type="text" id="lastname" placeholder="Blair"></label>
-        <label>Controller <select id="padSelect"><option value="none">Keyboard + mouse</option></select></label>
+        <label title="A room's name. Empty, Host makes one for the game picked (its prefix and four digits, RV-4821). Type a friend's code and press Join to sit down in their room; type one of your own and press Host to make a room of that name"><span class="tag"><span>Room</span><span>code</span></span><input type="text" id="room" placeholder="WC-auto" pattern="[A-Za-z0-9_\-]{4,64}"></label>
+        <button type="submit" class="secondary" id="joinCode" title="Joins the room of the code typed (a friend's, or one said in the lobby): you play its host's game. It makes no room: Host does">Join</button>
+        <label id="seatsLabel" title="The seats of a room you make: 2; 3 (in beta) for a third pilot; 1 to fly the game alone, as it is, with its own wingman, its own menus and its saved games (only the controller is the page's; no lobby server, nobody else comes in), what a phone or a tablet starts at. Not remembered"><span class="tag">Players</span><span class="boxrow"><input type="number" id="seats" min="1" max="3" step="1" value="2"><small class="beta" id="seatsBeta" hidden>beta</small></span></label>
+        <label><span class="tag">Controller</span><select id="padSelect"><option value="none">Keyboard + mouse</option></select></label>
         <button type="button" class="secondary" id="padScan" hidden title="For a controller that is not in the list after a press of its buttons: an Xbox 360-style pad (such as a Logitech F310 or F710 with its switch on X), which this browser cannot see on a Mac. The page reads it itself over USB; the browser asks which device first">Scan for joysticks</button>
         <span id="padScanState" role="status"></span>
-        <label id="tfFlightLabel" hidden title="TIE Fighter's flight: the arrow keys always steer (Shift for a full turn at once; the keypad's Ins and Del roll). The mouse either points to aim, as in Wing Commander and RetroVega (the middle is still, the further the pointer the faster the turn; a ring shows where it is; the craft turns and climbs without banking, the right button held with the mouse moved across rolls; or with the game's own bank into each turn), or drags to steer as the game itself has it (1994), or steers nothing (the keyboard alone, or a joystick: a controller picked above). F12 in flight switches between the first four. Remembered in this browser">Flight
+        <label id="tfFlightLabel" hidden title="TIE Fighter's flight (and its 1994 demo's): the arrow keys always steer (Shift for a full turn at once; the keypad's Ins and Del roll). The mouse either points to aim, as in Wing Commander and RetroVega (the middle is still, the further the pointer the faster the turn; a ring shows where it is; the craft turns and climbs without banking, the right button held with the mouse moved across rolls; or with the game's own bank into each turn), or drags to steer as the game itself has it (1994), or steers nothing (the keyboard alone, or a joystick: a controller picked above). F12 in flight switches between the first four. Remembered in this browser"><span class="tag">Flight</span>
           <select id="tfFlight">
             <option value="pointer">mouse: point to aim (right button: roll)</option>
             <option value="pointerbank">mouse: point to aim, banking</option>
@@ -301,13 +339,13 @@
             <option value="keyboard">keyboard alone</option>
             <option value="joystick">joystick / gamepad</option>
           </select></label>
-        <label id="voiceLabel" title="Voice between the players, when everybody in the room has opted in">Voice <select id="voice">
+        <label id="voiceLabel" title="Voice between the players, when everybody in the room has opted in"><span class="tag">Voice</span><select id="voice">
           <option value="off">Off</option>
           <option value="listen">Listen only</option>
           <option value="ptt">Push to talk (hold `)</option>
           <option value="on">Always on</option>
         </select></label>
-        <label id="voiceInputLabel">Microphone <select id="voiceInput" title="Choose the microphone used for voice; turn voice on to allow access and see device names">
+        <label id="voiceInputLabel"><span class="tag">Microphone</span><select id="voiceInput" title="Choose the microphone used for voice; turn voice on to allow access and see device names">
           <option value="">System default</option>
         </select></label>
       </form>
@@ -376,6 +414,10 @@
               <option value="BOU_AA:33">Hunter (woman)</option>
               <option value="BOU_AA:-1">Hunter (man)</option>
             </select></label>
+          <label id="tvCraftLabel" hidden title="The craft the host flies as, in the others' games (the host's choice, before a launch): the TV-202, a craft of the game's own, or each level's own craft. A model the game lacks is drawn as the level's own craft">Host's craft
+            <select id="tvCraftHost"><option value="ship.bin">TV-202</option><option value="icebrd.bin">Ymir IceRider</option><option value="snowftr.bin">Ymir SnowScout</option><option value="hawk.bin">Hawk</option><option value="gull1.bin">Gull</option><option value="planet">the level's own craft</option></select></label>
+          <label id="tvCraftGuestLabel" hidden title="The craft every other pilot flies as, in the others' games (the host's choice, before a launch)">Wingmen's craft
+            <select id="tvCraftGuest"><option value="ship.bin">TV-202</option><option value="icebrd.bin">Ymir IceRider</option><option value="snowftr.bin">Ymir SnowScout</option><option value="hawk.bin">Hawk</option><option value="gull1.bin">Gull</option><option value="planet">the level's own craft</option></select></label>
           <label class="check" id="capHullLabel" hidden title="Capital ships (carriers, destroyers, cruisers, transports, friend and foe) take three times the damage before they are destroyed. The host picks it before the launch"><input type="checkbox" id="capHull"> Capship hull</label>
           <div class="hint" id="missionHint"></div>
         </div>

@@ -16,12 +16,12 @@ import { initControls, KEY, stepped } from "./gamepad.js";
 import { initTouch } from "./touch.js";
 import { initVoice } from "./voice.js";
 import { loadSo3 } from "./so3.js";
-import { readZip, extractInstaller, looksLikeInstaller, identifyGame, installFiles,
-         saveGame, loadGames, forgetGame, totalSize, gameById, gameByTag, programsIn, knownBuild, GAMES } from "./gamefiles.js";
-import { newRoomCode, retagRoomCode, normalizeCode, roomTag, GAME_TAGS, MAX_CHARS, CALLSIGNS, pickCallsign, givesWay, sameName } from "./chatfilter.js";
+import { readZip, extractInstaller, looksLikeInstaller, identifyGame, installFiles, expandSplitZips, expandInnerZips,
+         saveGame, loadGames, forgetGame, totalSize, gameById, gameByTag, programsIn, knownBuild, legacyOf, legacyAdvice, GAMES } from "./gamefiles.js";
+import { newRoomCode, normalizeCode, roomTag, GAME_TAGS, MAX_CHARS, CALLSIGNS, pickCallsign, givesWay, sameName } from "./chatfilter.js";
 import { initHall, OTHER_SERVER, serverDown } from "./hall.js";
 import { createSetProvider, readTarGz } from "./rvsets.js";
-import { PAGE_BUILD, PAGE_SITE, buildFields, compareBuild, builtWhen, RELOAD_HOW } from "./build.js";
+import { buildFields, compareBuild, RELOAD_HOW } from "./build.js";
 
 const $ = (id) => document.getElementById(id);
 const logEl = $("log");
@@ -32,7 +32,7 @@ const DATA_URL = "wc.tar.gz";
 const GAME_ROOT = "/game";
 const LOBBY_MAGIC = [0x57, 0x43, 0x4c, 0x01]; // "WCL" + version; never a valid protobuf start
 const query = new URLSearchParams(location.search);
-// RetroVega, the registry's built-in game, is in every page's "Play" menu and
+// RetroVega, the registry's built-in game, is in every page's "Game" menu and
 // the game of a page with no other (the user, 2026-11-03: "make the default
 // site include the retrovega flag by default and default to that system if
 // there are no other games"; before, only with ?retrovega, which still does
@@ -180,9 +180,19 @@ $("copyLog").addEventListener("click", async () => {
   setTimeout(() => { $("copyLog").textContent = "Copy log"; }, 2500);
 });
 // The line under the drop zone: progress and trouble.  A game that is simply
-// ready says nothing there (the "Play" menu shows it); data-state tells the
+// ready says nothing there (the "Game" menu shows it); data-state tells the
 // page tests what the text no longer does: "busy", "ready" or "error".
 function sourceStatus(text, state) { const el = $("sourceStatus"); el.textContent = text; el.removeAttribute("title"); if (state) el.dataset.state = state; }
+// ... with the advice for a Wing Commander that is not the release the hooks know (gamefiles.js, LEGACY): which
+// one to download instead, and its store page.
+function sourceAdvice(text, state, which) {
+  sourceStatus(text, state);
+  const a = legacyAdvice(which);
+  if (!a) return;
+  const link = document.createElement("a");
+  link.href = a.link; link.target = "_blank"; link.rel = "noopener"; link.textContent = a.linkText;
+  $("sourceStatus").append(" ", a.text, " ", link, ".");
+}
 const mb = (n) => (n / 1048576).toFixed(1) + " MB";
 
 // Prefill from the URL (?room=CODE&callsign=...) so a link can be shared.
@@ -221,17 +231,13 @@ if (query.get("verbose")) $("verbose").checked = true;
 // yet: joinLinked, at the end of this file, says when it does.
 let linked = !!query.get("room");
 const linkWaits = () => linked && !lobby.game && normalizeCode($("room").value.trim()) === normalizeCode(query.get("room").trim());
-// A new room's code is the game's tag and four digits (WC1-4821; "WC-" as
-// long as no game is loaded): said in the public lobby it tells who can
-// join.  `autoCode` is the code this page made up: it follows the game the
-// player loads until the player types another or joins.
+// A room's code is only its name: the game travels with the room, from its host.  The box starts empty (the user,
+// 2026-11-17: "when the user really doesn't bother to type a room code it should generate the room code based on the
+// game"): Host with it empty makes a code of the picked game's tag and four digits (WC1-4821; said in the public
+// lobby it tells who can join).  `autoCode` is the code the page itself put in the box (a room it made up or found):
+// taken out again when that room is left or could not be had, so that no stale code names the next room.
 let autoCode = "";
-if (!$("room").value) { autoCode = newRoomCode(""); $("room").value = autoCode; }
-function retagRoom() {
-  if (lobby.game || !autoCode || $("room").value !== autoCode) return;
-  autoCode = retagRoomCode(autoCode, gameTag());
-  $("room").value = autoCode;
-}
+const roomPlaceholder = () => { $("room").placeholder = `${gameTag() || "WC"}-auto`; };
 // The game a code is for, when it says: the tag of a registry game.
 const codeGame = (code) => (GAME_TAGS.includes(roomTag(code)) ? gameByTag(roomTag(code)) : null);
 
@@ -243,14 +249,14 @@ const codeGame = (code) => (GAME_TAGS.includes(roomTag(code)) ? gameByTag(roomTa
 let source = null;
 let saved = [];
 // The files dropped on this page while a built-in game is picked: still in
-// the "Play" menu, as the saved copies are.
+// the "Game" menu, as the saved copies are.
 let shelved = null;
 
 // A game directory can hold more than one program of the registry (Wing
 // Commander's has The Secret Missions 2, Wing Commander II's the two Special
 // Operations).  Which one runs: the one the player picks in the menu
-// (`want`), else the one the room's code names, else the one picked the last
-// time, else the game itself.
+// (`want`), else the host's in a room, else the one the code of the room one is in
+// (or of a link's room) names, else the one picked the last time, else the game itself.
 const PROGRAM_KEY = (base) => `wc:program:${base}`;
 function setSource(s, want) {
   // What the page knows about a game is the registry's, also for a copy this
@@ -259,7 +265,7 @@ function setSource(s, want) {
     const base = gameById(gameById(s.game.id).partOf || s.game.id);
     const programs = programsIn(s.files);
     if (!programs.includes(base)) programs.unshift(base);
-    const roomCode = lobby.game ? lobby.game.code : ($("room").value !== autoCode ? $("room").value.trim() : "");
+    const roomCode = lobby.game ? lobby.game.code : (linkWaits() ? $("room").value.trim() : "");
     let kept = null;
     try { kept = localStorage.getItem(PROGRAM_KEY(base.id)); } catch (e) { /* none */ }
     // (In a room the host's program is everyone's: the code only says what
@@ -278,11 +284,13 @@ function setSource(s, want) {
   source = s;
   renderPrograms();
   if (s) {
-    // Ready: the "Play" menu says which, and the line under it speaks only
+    // Ready: the "Game" menu says which, and the line under it speaks only
     // of what runs single-player.  (Where the files came from and how many
     // is the menu's tooltip: the panel stays a few lines, and Fly in view.)
-    sourceStatus(!s.game.multiplayer ? `${s.game.title}: the multiplayer hooks do not know this program, so it runs single-player.`
-                 : !s.known ? `${s.game.title}: its ${gameById(s.game.id).detect[0]} is not the build the multiplayer hooks know: it runs single-player, and the public lobby stays closed.` : "", "ready");
+    // (a Wing Commander of another release: which one to get, said with it)
+    sourceAdvice(!s.game.multiplayer ? `${s.game.title}: the multiplayer hooks do not know this program, so it runs single-player.`
+                 : !s.known ? `${s.game.title}: its ${gameById(s.game.id).detect[0]} is not the build the multiplayer hooks know: it runs single-player, and the public lobby stays closed.` : "", "ready",
+                 s.game.multiplayer && !s.known ? legacyOf("", s.files) : "");
     $("programLabel").title = (s.builtin ? `${s.game.title} is built into this page: its files come from the site when you fly.`
                                : `From ${s.label}: ${s.files.length} files, ${mb(totalSize(s.files))}.`)
                               + " The menu has every program of the games this browser holds; in a room everyone plays the host's.";
@@ -291,7 +299,7 @@ function setSource(s, want) {
   // The help under the game is the loaded game's own; so are its keys, where it has a list (RetroVega's flight).
   const keys = s && gameInfo() && gameInfo().keys;
   $("gameKeys").innerHTML = keys || "";
-  $("tfFlightLabel").hidden = !isTf();
+  $("tfFlightLabel").hidden = !isTie();
   gameLook();
   $("gameKeys").hidden = !keys;
   const hints = s && gameInfo() && gameInfo().campaign && gameInfo().campaign.hints;
@@ -301,9 +309,9 @@ function setSource(s, want) {
   // (the Players box: as many seats as the game's rooms take)
   $("seats").max = String(maxSeats());
   if (Number($("seats").value) > maxSeats()) $("seats").value = String(maxSeats());
-  // (Wing Commander II's people use a first name; the first game has none.)
-  $("firstnameLabel").hidden = !(gameInfo() && gameInfo().firstName);
-  retagRoom();
+  // (Wing Commander II's people use a first name; the first game has none: the box is there for every game, optional,
+  // the user's call, 2026-11-15)
+  roomPlaceholder();
   if (lobby.game) { sayHello(); buildMissionMenu(); renderMission(); }
   hall.gameChanged();
   updateActions();
@@ -338,9 +346,39 @@ function switchTo(holder, id) {
   else if (holder === "builtin") useBuiltin(id);
   else if (holder) useSavedCopy(holder, id);
 }
-// The "Play" menu: every program of every game this browser holds (the
-// loaded files and the saved copies), by game, the loaded one selected.
-// Picking a program of another saved copy switches to that copy.
+// The game this pilot picked last (the menu, or files dropped), in this browser: the one a visit starts with (the
+// user, 2026-11-17: "whatever game is at the top of the dropdown kinda gets lucky").  A room joined or a link's game
+// is not a pick.
+const PICK_KEY = "wc:game";
+const rememberPick = (id) => { try { localStorage.setItem(PICK_KEY, id); } catch (e) { /* not kept */ } };
+const lastPick = () => { try { return localStorage.getItem(PICK_KEY); } catch (e) { return null; } };
+// ?game=: a game's id, tag or everyday name (the user, 2026-11-15: "if they pass in a game=tv or game=tf or
+// game=raptor or game=rv flag it defaults to those games"): "tf" is TIE Fighter, the CD's when this browser has it,
+// else the 1994 demo.
+function gameParam(v) {
+  const k = String(v || "").trim().toLowerCase();
+  if (!k) return null;
+  const named = { raptor: "rap", retrovega: "rv", tie: "tf", tfd: "tiedemo", tiefighter: "tf", privateer: "priv", terminalvelocity: "tv" };
+  let id = named[k] || k;
+  if (!gameById(id)) { const byTag = GAMES.find((g) => g.tag.toLowerCase() === k); id = byTag ? byTag.id : null; }
+  if (id === "tf" && !holderOf("tf")) id = "tiedemo";
+  return id && gameById(id) ? id : null;
+}
+// The game a link asks for: ?game=tf, or the short way, the game's name as the flag, ?tf=1 ?tv=1 ?rv=1 ?wc1=1 (the
+// user, 2026-11-17: "if you go in with ?tf=1 or ?tv=1 or ?rv=1 or ?wc1=1 it forces those but otherwise it's entirely
+// dropdown driven").  A room's link names its own game.
+function askedGame() {
+  if (query.get("room")) return null;
+  const named = gameParam(query.get("game"));
+  if (named) return named;
+  for (const [k, v] of query) if (k !== "game" && (v === "1" || v === "")) { const id = gameParam(k); if (id) return id; }
+  return null;
+}
+// The "Game" menu, the one place a game is picked (the user, 2026-11-17: "it now gets really confusing to figure out
+// which game you've selected"; "the idea of installing demos can be abstracted away"): every program of every game
+// this browser holds (the loaded files and the saved copies), by game, the loaded one selected; then the free games it
+// has not got yet (DEMOS: fetched when picked, or when a room asks), then the games that need the player's own files
+// (greyed: the drop box under the menu).  Picking a program of another saved copy switches to that copy.
 function renderPrograms() {
   const sel = $("program");
   sel.innerHTML = "";
@@ -361,10 +399,41 @@ function renderPrograms() {
   if (shelved) for (const g of shelved.programs || []) add(g);
   for (const copy of saved) for (const g of (gameById(copy.id) ? programsIn(copy.files) : [{ id: copy.id, title: copy.title }])) add(g);
   for (const g of builtins()) add(g);
-  // (One game with one program needs no heading over it.)
-  if (groups.size === 1) { const grp = groups.values().next().value; if (grp.children.length === 1) { sel.appendChild(grp.firstChild); grp.remove(); } }
+  const more = (label, list, off) => {
+    if (!list.length) return;
+    const grp = document.createElement("optgroup"); grp.label = label;
+    for (const g of list) { const o = document.createElement("option"); o.value = g.id; o.textContent = g.title; o.disabled = !!off; grp.appendChild(o); }
+    sel.appendChild(grp);
+  };
+  more("Free: fetched when picked", DEMOS.filter((d) => !seen.has(d.id) && gameById(d.id)).map((d) => gameById(d.id)));
+  more("Your own files: drop them below", GAMES.filter((g) => g.multiplayer && !g.partOf && !g.builtin && !seen.has(g.id) && !demoOf(g.id)), true);
   if (source) sel.value = source.game.id;
   $("programLabel").hidden = !sel.options.length;
+  // Every game by name beside the menu, so that nobody has to open it to learn what there is (the user, 2026-11-17:
+  // "people may not realize the set of games avail"): a click picks one as the menu does, the one picked is lit, a
+  // game that needs the pilot's own files is dim until they are here.
+  const row = $("gameList");
+  row.innerHTML = "";
+  const mine = source ? (gameById(source.game.id) || {}).partOf || source.game.id : "";
+  // (the games that are here first, then the free ones, then those that wait for files)
+  const rank = (g) => (seen.has(g.id) ? 0 : demoOf(g.id) ? 1 : 2);
+  for (const g of GAMES.filter((x) => x.multiplayer && !x.partOf).sort((x, y) => rank(x) - rank(y))) {
+    const here = seen.has(g.id), free = !here && !!demoOf(g.id);
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "secondary" + (g.id === mine ? " on" : ""); b.textContent = g.short || g.title;
+    b.dataset.game = g.id;
+    b.disabled = !here && !free;
+    b.title = here ? `${g.title}: pick it` : free ? `${g.title}: free, fetched when picked and kept in this browser` : `${g.title} needs your own files: drop them in the box below`;
+    b.addEventListener("click", () => {
+      if (running || g.id === mine) return;
+      // (the program of it picked the last time, when it is here)
+      let kept = null;
+      try { kept = localStorage.getItem(PROGRAM_KEY(g.id)); } catch (e) { /* none */ }
+      sel.value = kept && [...sel.options].some((o) => o.value === kept && !o.disabled) ? kept : g.id;
+      sel.dispatchEvent(new Event("change"));
+    });
+    row.appendChild(b);
+  }
 }
 // The public lobby is for a pilot with a game to fly: the page connects to
 // it only while one is loaded that the hooks know.
@@ -372,8 +441,10 @@ const lobbyReady = () => !!(source && source.known);
 $("program").addEventListener("change", () => {
   if (running) return;
   const id = $("program").value;
+  rememberPick(id);
   const holder = holderOf(id);
-  if (!holder) return;
+  // (a free game this browser has not got: fetched; the menu back as it was if that fails)
+  if (!holder) { const d = demoOf(id); if (d) void getGame(d).then((ok) => { if (!ok) renderPrograms(); }); else renderPrograms(); return; }
   const g = gameById(id);
   if (g) { try { localStorage.setItem(PROGRAM_KEY(g.partOf || g.id), id); } catch (e) { /* not kept */ } }
   switchTo(holder, id);  // (a program of another game this browser holds, or the page's own)
@@ -383,15 +454,29 @@ $("program").addEventListener("change", () => {
 const gameTag = () => (gameInfo() && gameInfo().tag) || "";
 
 async function useFiles(files, label, { persist = true } = {}) {
-  const id = identifyGame(files);
+  // (a game in pieces, Terminal Velocity's shareware: its split archive unpacked)
+  files = await expandSplitZips(files);
+  let id = identifyGame(files);
+  if (!id.game) {
+    // (no game at the archive's own level: a zip inside it that holds one, a backup wrapped once more)
+    const more = await expandInnerZips(files);
+    if (more !== files) { files = more; id = identifyGame(files); }
+  }
+  if (id.game && id.gathered && id.gathered.length) {
+    log(`${id.game.title}: ${id.gathered.length} of its files found elsewhere in ${label} and put with the program: ${id.gathered.slice(0, 12).join(", ")}${id.gathered.length > 12 ? ", ..." : ""}`);
+  }
   if (!id.game) {
     $("pickerLabel").hidden = false;
     const sel = $("exePicker");
     sel.innerHTML = "";
     for (const c of id.candidates) { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); }
-    sourceStatus(id.candidates.length
-      ? `${label}: no game I recognise (${files.length} files). Pick the executable to run.`
-      : `${label}: no DOS executable found among ${files.length} files.`, "error");
+    // (a Wing Commander by its name or its data files, but none of its programs: another release)
+    const which = legacyOf(label, files);
+    const said = () => sourceAdvice(id.candidates.length
+      ? (which ? `${label}: not a release of ${which === "wc2" ? "Wing Commander II" : "Wing Commander"} this page knows (${files.length} files).`
+               : `${label}: no game I recognise (${files.length} files). Pick the executable to run.`)
+      : `${label}: no DOS executable found among ${files.length} files.`, "error", which);
+    said();
     sel.onchange = () => {
       const exe = sel.value;
       const root = exe.includes("/") ? exe.slice(0, exe.lastIndexOf("/")) : "";
@@ -402,7 +487,7 @@ async function useFiles(files, label, { persist = true } = {}) {
       setSource({ label, game, root, files: sub });
       if (persist) void saveGame({ id: game.id, title: game.title, run: game.run, multiplayer: false, label, files: sub, when: Date.now() });
     };
-    if (id.candidates.length) sel.onchange();
+    if (id.candidates.length) { sel.onchange(); if (which) said(); }   // (the advice stays in view over the picked program's line)
     return;
   }
   $("pickerLabel").hidden = true;
@@ -417,22 +502,24 @@ async function handleFile(file) {
   try {
     sourceButtons(false);
     sourceStatus(`Reading ${file.name} (${mb(file.size)})…`, "busy");
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    // (what it is by its first bytes: a .zip is read whole, an installer where it is, a piece at a time)
+    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
     let files;
-    if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
-      files = await readZip(bytes);
+    if (head[0] === 0x50 && head[1] === 0x4b) {
+      files = await readZip(new Uint8Array(await file.arrayBuffer()));
       log(`read ${files.length} files from ${file.name}`);
-    } else if (looksLikeInstaller(bytes)) {
+    } else if (looksLikeInstaller(head)) {
       sourceStatus(`Unpacking the installer ${file.name} in your browser… (innoextract)`);
-      files = await extractInstaller(bytes, log);
+      files = await extractInstaller(file, log);
     } else {
       throw new Error(`${file.name} is neither a .zip nor a Windows installer`);
     }
     await useFiles(files, file.name);
   } catch (e) {
     log("game files: " + (e && e.message ? e.message : e));
-    sourceStatus(`Could not use ${file.name}: ${e && e.message ? e.message : e}. ` +
-                 `A .zip of the installed game folder always works; for a GOG installer you can also unpack it with innoextract and zip the result.`, "error");
+    const which = legacyOf(file.name);
+    sourceAdvice(`Could not use ${file.name}: ${e && e.message ? e.message : e}.` +
+                 (which ? "" : ` A .zip of the installed game folder always works; for a GOG installer you can also unpack it with innoextract and zip the result.`), "error", which);
   } finally {
     sourceButtons(true);
   }
@@ -447,7 +534,50 @@ const rvSets = createSetProvider({ base: "rv/", root: GAME_ROOT, status, log });
 // and once the game runs.
 function sourceButtons(on) {
   for (const el of [$("useServer"), $("program"), ...$("savedList").querySelectorAll("button")]) el.disabled = !on;
+  if (on) renderPrograms(); else for (const el of $("gameList").querySelectorAll("button")) el.disabled = true;
 }
+// The games anyone can play at once, the "Game" menu's free ones: RetroVega (built into the page), the shareware this
+// site offers (web/demos: the archives exactly as Apogee and 3D Realms released them, their VENDOR.DOC letting anyone
+// pass them around unchanged and free of charge), and the TIE Fighter demo from the Internet Archive (its CORS address:
+// the Dodge Neon preview's two floppies, 1.7 MB).  A copy this browser kept is used as it is (nothing fetched again);
+// else the archive is fetched and read as a dropped file is (and kept): when it is picked in the menu, when a room's
+// link, a room found or a room's host plays it.
+const DEMOS = [
+  { id: "rv", title: "RetroVega", builtin: true },
+  { id: "rap", file: "1rap12.zip", title: "Raptor's shareware" },
+  { id: "tv", file: "3dtv12.zip", title: "Terminal Velocity's shareware" },
+  { id: "tiedemo", file: "TIE_Fighter_Preview__Dodge_Neon.zip", title: "the TIE Fighter demo", from: "the Internet Archive",
+    url: "https://archive.org/cors/StarWarsTIEFighter_1020/TIE_Fighter_Preview__Dodge_Neon.zip" },
+];
+const demoOf = (id) => DEMOS.find((d) => d.id === id) || null;
+// The game picked wherever this browser has it, else fetched (one fetch at a time for each): true once it is the
+// source.
+const fetching = new Map();   // game id -> its fetch under way
+async function getGame(d) {
+  if (d.builtin) { useBuiltin(d.id); return true; }
+  const holder = holderOf(d.id);
+  if (holder) { switchTo(holder, d.id); return runs(source, d.id); }
+  if (!fetching.has(d.id)) {
+    fetching.set(d.id, (async () => {
+      let file;
+      try {
+        sourceButtons(false);
+        sourceStatus(`Fetching ${d.title} (${d.file}) from ${d.from || "this site"}…`, "busy");
+        const r = await fetch(d.url || "demos/" + d.file);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        file = new File([await r.blob()], d.file, { type: "application/zip" });
+      } catch (e) {
+        sourceStatus(`Could not fetch ${d.title}: ${e && e.message ? e.message : e}`, "error");
+        sourceButtons(true);
+        return;
+      }
+      await handleFile(file);
+    })().finally(() => fetching.delete(d.id)));
+  }
+  await fetching.get(d.id);
+  return runs(source, d.id);
+}
+
 // (Said with its date and its file: a game that is simply there on the
 // next visit is the copy this browser kept, not one the site has.)
 const useSavedCopy = (g, want) => setSource({ label: `the copy this browser saved${g.when ? " on " + new Date(g.when).toLocaleDateString() : ""} (${g.label})`, saved: true, savedId: g.id,
@@ -455,7 +585,7 @@ const useSavedCopy = (g, want) => setSource({ label: `the copy this browser save
 
 // The copies this browser kept, side by side on one line: each with its
 // size and a "forget" for one that is wrong or damaged.  (Playing one is
-// the "Play" menu's business: it lists their programs.)
+// the "Game" menu's business: it lists their programs.)
 async function refreshSaved() {
   saved = (await loadGames()).sort((a, b) => (b.when || 0) - (a.when || 0));
   const list = $("savedList");
@@ -491,8 +621,10 @@ async function initSources() {
   const drop = $("dropzone");
   for (const ev of ["dragenter", "dragover"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); });
   for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); });
-  drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) void handleFile(f); });
-  $("gamefile").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) void handleFile(f); });
+  // (files the pilot brings are a pick, as the menu's are)
+  const brought = (f) => { if (f) void handleFile(f).then(() => { if (source) rememberPick(source.game.id); }); };
+  drop.addEventListener("drop", (e) => brought(e.dataTransfer.files && e.dataTransfer.files[0]));
+  $("gamefile").addEventListener("change", (e) => brought(e.target.files && e.target.files[0]));
 
   $("useServer").addEventListener("click", async () => {
     try {
@@ -505,15 +637,30 @@ async function initSources() {
   let serverCopy = false;
   try { serverCopy = (await fetch(DATA_URL, { method: "HEAD" })).ok; } catch (e) { /* none */ }
   $("useServer").hidden = !serverCopy;
+  // (a game dropped or fetched while the saved copies and the server were asked is the player's pick: no default over
+  // it.  On the site the server's question can take a second or more, and a zip dropped as the page opened was
+  // replaced by the page's own game)
+  if (source || fetching.size) return;
   // (A link to a room for one game picks that game among the saved copies.)
   // (Nothing saved and no server copy: the game built into the page, so
   // that everybody can fly, and meet in the lobby, with nothing to bring.)
   const wanted = codeGame(lobby.game ? lobby.game.code : $("room").value.trim());
   const fits = wanted && saved.find((g) => programsIn(g.files).includes(wanted));
+  // (?game=: the page opened for a game, "rv", "tv", "raptor", "tf" (the CD's when this browser has it, else the demo):
+  // that one, wherever this browser has it, a free one fetched; a room's link names its own)
+  const asked = askedGame();
+  if (asked && holderOf(asked)) { switchTo(holderOf(asked), asked); return; }
+  if (asked && demoOf(asked)) { void getGame(demoOf(asked)); return; }
+  // (then a room's link's game, then the game picked the last time, then the newest copy, then the page's own)
+  const last = !wanted && lastPick();
   if (wanted && builtins().includes(wanted)) useBuiltin(wanted.id);
-  else if (saved.length) useSavedCopy(fits || saved[0]);
+  else if (fits) useSavedCopy(fits);
+  else if (last && holderOf(last)) switchTo(holderOf(last), last);
+  else if (saved.length) useSavedCopy(saved[0]);
   else if (serverCopy) $("useServer").click();
   else if (builtins().length) useBuiltin(builtins()[0].id);
+  // (a link's game that needs the pilot's own files: said, with whatever is picked meanwhile)
+  if (asked && source && source.game.id !== asked) sourceStatus(`${gameById(asked).title} needs your own files: drop them below. ${source.game.title} is picked meanwhile.`);
 }
 
 // -- save games ----------------------------------------------------------------
@@ -832,7 +979,7 @@ function renderMission() {
   // (a game the room does not fly, Privateer's: the row for its Face box alone -- and Full screen -- the room's own
   // choices hidden; the Face box was hidden with the whole row before: the user, 2026-11-09, "I also don't see an
   // option to select comm portrait")
-  $("missionRow").hidden = !lobbyFlies() && !isPriv();
+  $("missionRow").hidden = !lobbyFlies() && !isPriv() && !isTvRoom();
   loadCampaignManifest(gameById(lobbyGameId()));
   wordCampaign();
   buildMissionMenu();
@@ -860,6 +1007,10 @@ function renderMission() {
   $("difficultyLabel").hidden = !diff || noRoomOptions;
   // (Privateer: Face, yours on the others' comm screens, in the Conn and Collide choices' place)
   $("privFaceLabel").hidden = !isPriv();
+  // (Terminal Velocity: the craft each pilot flies as in the others' games, the host's choice)
+  $("tvCraftLabel").hidden = $("tvCraftGuestLabel").hidden = !isTvRoom() || one;
+  $("tvCraftHost").disabled = $("tvCraftGuest").disabled = !isHost() || running;
+  tvCraftOffer();
   if (diff) {
     $("collisions").parentElement.hidden = true;
     lobby.rocks = "on";
@@ -905,15 +1056,29 @@ function renderMission() {
 // files (wrongGame).  The room's code only says what the room was made for,
 // so the host may switch programs and the room stays together (the
 // user's wish of 2026-10-17: pilots found it hard to change games).
+const followFetched = new Set();   // (the free games fetched for the room's host: one try a room)
 function followHost() {
   if (isHost() || !source) return;
   const theirs = lobby.games.get(0);
   if (!theirs || theirs === source.game.id) return;
   const g = gameById(theirs);
-  switchTo(holderOf(theirs), theirs);
   const who = esc(lobby.names.get(0) || "The host");
+  // (a free game this browser has not got: fetched, once for a room; setSource then takes the host's program)
+  const d = !holderOf(theirs) && demoOf(theirs);
+  if (d) {
+    if (followFetched.has(theirs)) return;
+    followFetched.add(theirs);
+    chatLine(`${who} plays ${esc(g.title)}: fetching it…`, "sys");
+    void getGame(d).then((ok) => {
+      if (ok) chatLine(`Switched to ${esc(g.title)}.`, "sys");
+      else chatLine(`${esc(g.title)} could not be fetched: pick it in the Game menu to try again, or leave the room.`, "sys");
+      updateActions();
+    });
+    return;
+  }
+  switchTo(holderOf(theirs), theirs);
   if (source && source.game.id === theirs) chatLine(`${who} plays ${esc(g ? g.title : theirs)}: switched to it.`, "sys");
-  else chatLine(`${who} plays ${esc(g ? g.title : theirs)}, which this browser has no files for: load them (step 1) to fly along.`, "sys");
+  else chatLine(`${who} plays ${esc(g ? g.title : theirs)}, which this browser has no files for: drop them in the Game panel to fly along.`, "sys");
 }
 
 // -- the room ------------------------------------------------------------------
@@ -1003,31 +1168,21 @@ const sayHello = (to, reply) => sendLobby({ t: "hello", name: myName(), flying: 
   latency: isHost() ? lobby.latency : undefined, fps: isHost() ? lobby.fps : undefined,
   capHull: isHost() ? lobby.capHull : undefined, private: isHost() ? privateOn() : undefined, ...buildFields() }, to);
 
-// Another page in the room is another build (build.js): said once a seat and a verdict.  A page from before builds
-// were compared shows nothing of ours but the chat, so it is asked there, that pilot alone.
+// Another page in the room is another version (build.js): a line once a seat and a verdict, nothing when the same.  A
+// page from before builds were compared hears nothing of ours but the chat: it is asked there, that pilot alone.
 function buildNote(seat, m, rel) {
   const who = esc(typeof m.name === "string" ? m.name : `Player ${seat + 1}`);
-  if (rel === "newer") {
-    chatLine(`${who}'s page is a newer build than this one (built ${esc(builtWhen(m.built))}): ${RELOAD_HOW} before you fly together, or your games will not match.`, "sys");
-    status(`This page is an older build than ${typeof m.name === "string" ? m.name : `Player ${seat + 1}`}'s: ${RELOAD_HOW}, then join the room again.`);
-  } else if (rel === "older") {
-    chatLine(`${who}'s page is an older build than this one (built ${esc(builtWhen(m.built))}): it has told them to reload.`, "sys");
-  } else if (rel === "site") {
-    chatLine(`${who} is on another page of this site (${esc(m.site)}, this one ${esc(PAGE_SITE)}): its game is not this one's. Fly together from the same page.`, "sys");
-  } else if (rel === "none") {
-    // (an older page of this site, or, until every site's page compares builds, another site's: /dosbox/ and the
-    // terrain branch's /terrain/ meet in one lobby)
-    chatLine(`${who}'s page is another build, from before pages compared their builds (an older page, or another site's): they have been asked in the chat to reload it, or to meet on this page.`, "sys");
-    sendLobby({ t: "chat", name: myName(), text: `(automatic) Our pages are different builds, so our games would not match: mine is ${location.host}${PAGE_SITE}, built ${builtWhen(PAGE_BUILD.at)}. If yours is the same address, please ${RELOAD_HOW}; if not, let us meet on one page.` }, seat);
-  }
+  if (rel === "newer") chatLine(`${who} has a newer version of this page: ${RELOAD_HOW}.`, "sys");
+  else if (rel === "older" || rel === "none") chatLine(`${who}'s page is out of date${rel === "none" ? " (asked to reload)" : ""}.`, "sys");
+  else if (rel === "site") chatLine(`${who} is on another page (${esc(m.site)}): fly from one page.`, "sys");
+  if (rel === "none") sendLobby({ t: "chat", name: myName(), text: `(automatic) Your page is out of date: please ${RELOAD_HOW}.` }, seat);
 }
-// Why this page does not fly along with seat's game (its page another build), or "" when it may (plain text)
+// Why seat's game and this page's would not match (build.js), plain text, or ""
 function buildApart(seat) {
   const rel = lobby.builds.get(seat), who = lobby.names.get(seat) || `Player ${seat + 1}`;
-  return rel === "newer" ? `${who}'s page is a newer build than this one: ${RELOAD_HOW}, then join the room again.`
-    : rel === "older" ? `${who}'s page is an older build than this one: they need to reload it before you can fly together.`
-    : rel === "none" ? `${who}'s page is another build (an older page, or another site's): they need to reload it, or to come to this page, before you can fly together.`
-    : rel === "site" ? `${who} is on another page of this site: fly together from the same page.` : "";
+  return rel === "newer" ? `This page is out of date: ${RELOAD_HOW}.`
+    : rel === "older" || rel === "none" ? `${who}'s page is out of date.`
+    : rel === "site" ? `${who} is on another page.` : "";
 }
 
 // Another pilot (seat `seat` of the lobby or the room this page is seat
@@ -1206,7 +1361,7 @@ function wrongGame() {
   if (!lobby.game || isHost() || !source) return "";
   const theirs = gameById(lobby.games.get(0) || "");
   if (!theirs || theirs.id === source.game.id) return "";
-  return `The host plays ${theirs.title}, and you have ${source.game.title} loaded: load ${theirs.title} above (step 1), or leave the room.`;
+  return `The host plays ${theirs.title}, and you have ${source.game.title} loaded: load ${theirs.title} (the Game panel), or leave the room.`;
 }
 // A guest flies only once its host does (the user, 2026-11-05: "As a guest in a lobby--I believe if you fly first you
 // kinda end up in single player mode...that shouldn't be allowed...guest should only be allowed to fly if host has
@@ -1223,6 +1378,24 @@ const guestWaits = () => !!lobby.game && !soloRoom() && !isHost()
 // A host alone in its room may fly alone instead (the user: "a Fly Single Player button when they are in a empty
 // lobby which doesn't post it to the channel and starts it as single player.  otherwise same as fly")
 const aloneInRoom = () => !!lobby.game && !soloRoom() && isHost() && !lobby.game.players.some((p) => p.occupied && p.id !== lobby.game.selfId);
+// A game's series: Wing Commander and Wing Commander II with their mission disks, TIE Fighter and its demo; every other
+// game is its own (Privateer too: another kind of game).  The room panel's "Join open ..." keeps to the series of the
+// game picked (the user, 2026-11-17: "restrict to...that series at least (eg can join TFD or TF, can join WC1 or WC2)
+// but not willy nilly"); the top button's takes any.
+const SERIES = { wc1: "wc", wc2: "wc", tf: "tie", tiedemo: "tie" };
+const SERIES_NAMES = { wc: "Wing Commander", tie: "TIE Fighter" };
+function seriesOf(id) {
+  const g = gameById(id);
+  if (!g) return id || "";
+  const base = g.partOf || g.id;
+  return SERIES[base] || base;
+}
+function seriesName(id) {
+  const g = gameById(id), base = g && gameById(g.partOf || g.id);
+  return SERIES_NAMES[seriesOf(id)] || (base ? base.short || base.title : "");
+}
+// The name on the Host button: the game picked, in a word or two.
+const shortTitle = () => { const g = gameInfo(); return g ? g.short || g.title : source ? source.game.title : ""; };
 // This page's flights would not match the room's (build.js): it is an older build than a pilot's here, or, a guest, its
 // host's page is another build.  The reason, for the status line (and Fly held till it is gone), or ""
 function buildWrong() {
@@ -1232,17 +1405,25 @@ function buildWrong() {
 }
 function updateActions() {
   const wrong = wrongGame() || buildWrong();
+  $("join").textContent = source ? `Host ${shortTitle()}` : "Host a room";
+  const one = seatCount() === 1;
+  $("join").title = `Makes a room${source ? " of " + source.game.title : ""} and puts you in it as its host: under the code typed in the box, or one made for the game (${gameTag() || "WC"}-4821). ${one ? "With Players at 1 it is yours alone, said to nobody" : "It is offered in the lobby, for anybody to join, unless Private (below) is ticked: then only its code or its link brings somebody in"}`;
+  $("findRoom").hidden = $("joinCode").hidden = !!lobby.game;
+  const series = source ? seriesName(source.game.id) : "";
+  $("findRoom").textContent = series ? `Join open ${series}` : "Join open game";
+  $("findRoom").title = `Joins a room with a free seat that a pilot in the lobby sits in, of ${series ? "the " + series + " games" : "the game picked"} only (the game picked first): the Game menu then says which. The button at the top of the page takes a room of any game. It never makes a room: Host does`;
   const ready = !!source && !!lobby.game && !running && !wrong;
   $("fly").disabled = !ready || guestWaits();
   // (in a room alone as its host, or in none yet, the lobby's alone: the user's "in a empty lobby")
   $("flySolo").hidden = !source || running || !!wrong || (lobby.game ? !aloneInRoom() : linkWaits() || $("join").disabled)
-    || advertised.has(normalizeCode(lobby.game ? lobby.game.code : $("room").value.trim()));   // (offered in the lobby: not alone)
+    || (advertised.has(normalizeCode(lobby.game ? lobby.game.code : $("room").value.trim()))   // (offered in the lobby by hand: not alone;
+        && !hostOffered.has(normalizeCode(lobby.game ? lobby.game.code : $("room").value.trim())));  // by Host itself: nobody may come)
   $("advertise").hidden = !lobby.game || !lobbyReady() || !lobby.game.players.some((p) => !p.occupied);   // (in flight too)
   if (!running) {
     if (wrong) status(wrong);
-    else if (!source && !lobby.game) status(linkWaits() ? `Load your game files (step 1) and you are in room ${$("room").value.trim()}; "Join room" takes a seat in it without them.` : "Load the game files and join a room first.");
+    else if (!source && !lobby.game) status(linkWaits() ? `Load your game files (step 1) and you are in room ${$("room").value.trim()}; "Join" takes a seat in it without them.` : "Pick a game (the Game menu), then host a room or join one.");
     else if (!source) status(`Join succeeded; now load ${codeGame(lobby.game.code) ? codeGame(lobby.game.code).title : "the game files"} above.`);
-    else if (!lobby.game) status("Game files ready; join a room to fly with friends.");
+    else if (!lobby.game) status(`${source.game.title} is picked: host a room, join an open game, or join a friend's by its code.`);
     else if (soloRoom()) { $("fly").textContent = "Fly"; status(`Room ${lobby.game.code} is yours alone: press Fly.`); }
     else if (isHost()) { $("fly").textContent = "Fly (starts everyone)"; status(`You host room ${lobby.game.code}.`); }
     else { $("fly").textContent = "Fly"; status(lobby.flying.has(0) ? "The host is already flying: press Fly to join the mission."
@@ -1255,16 +1436,18 @@ function updateActions() {
 // Fly once there is a room to fly from (the same as the Fly button below),
 // before that the step that comes next, and the full screen while the game
 // runs.
+const FIND_TITLE = "Joins a room with a free seat that a pilot in the lobby sits in, of any game this browser has or can fetch: one of the game picked in the Game menu when there is one, then one of its series, then any other (the Game menu then says which). It never makes a room: Host does";
 function renderTopAction() {
   const b = $("topAction");
   const step = running ? "screen" : !source ? "files" : !lobby.game ? "room" : "fly";
   b.dataset.step = step;
   b.disabled = step === "fly" && $("fly").disabled;
   if (step === "room") b.disabled = seeking;
+  $("findRoom").disabled = $("joinCode").disabled = seeking || $("join").disabled;
   b.textContent = { screen: "Full screen", files: "Load game files", room: "Join open game", fly: "Fly" }[step];
   b.title = { screen: "The game full screen; holding Esc leaves it",
               files: "Your own Wing Commander or Wing Commander II: a .zip of the game folder, or the GOG installer",
-              room: "Joins a room with a free seat that a pilot in the lobby sits in, for a game this browser has (one at random). \"Join room\" in step 2 joins the code typed there, or makes that room",
+              room: FIND_TITLE,
               fly: $("status").textContent }[step];
 }
 $("topAction").addEventListener("click", () => {
@@ -1406,7 +1589,7 @@ function onLobbyEvent(ev) {
         lobby.flying.add(0); renderRoster();
         followHost();
         const theirs = gameById(lobby.games.get(0) || ""), apart = buildApart(0);
-        if (apart) { status(`The host started the game, but ${apart}`); chatLine(esc(apart), "sys"); }
+        if (apart) status(apart);
         else if (source && theirs && theirs.id !== source.game.id) status(`The host started ${theirs.title}, and you have ${source.game.title} loaded. Load ${theirs.title} above, then press Fly to join.`);
         else if (source) void start(false);
         else status("The host started the game. Load your game files above, then press Fly to join.");
@@ -1458,22 +1641,38 @@ function fitsRoom(code) {
     chatLine(`Room ${esc(code)} is a ${esc(theirs.title)} room: switched to ${holder === "builtin" ? "it (built into this page)" : holder === "shelved" ? "the files dropped here" : "the saved copy that has it"}.`, "sys");
     return true;
   }
-  status(`${code} is a ${theirs.title} room, and you have ${source.game.title} loaded. Load ${theirs.title} above (step 1) to join it.`);
+  const d = demoOf(theirs.id);
+  if (d) {
+    // (a free game: fetched now; a room's link joins once it is there, setSource's joinLinked)
+    status(`${code} is a ${theirs.title} room: fetching ${d.title} first…`);
+    void getGame(d);
+    return false;
+  }
+  status(`${code} is a ${theirs.title} room, and you have ${source.game.title} loaded. Drop its files in the Game panel to join it.`);
   return false;
 }
 
-// create: false only joins a room that exists (a code clicked in the lobby).
-async function joinRoom({ create = true } = {}) {
+// create: false only joins a room that exists (Join with a code typed, a code clicked in the lobby, a room found);
+// otherwise the room is made when it is not there (Host, a link).  `game`: the program the room is known to play (a
+// room found in the lobby): switched to, whatever the code says.
+async function joinRoom({ create = true, game = null } = {}) {
   if (lobby.game || $("join").disabled) return;
   // (A link's room that waits for the right game goes on waiting for it.)
   const viaLink = linkWaits();
   linked = false;
-  const code = normalizeCode($("room").value.trim());
+  let code = normalizeCode($("room").value.trim());
+  // (no code typed: a room made here gets one of the picked game's)
+  if (!code && create) { code = newRoomCode(gameTag()); autoCode = code; }
+  if (!code) { status("Type the code of the room to join (a friend's, or one said in the lobby). Host makes a room of your own."); $("room").focus(); return; }
   $("room").value = code;
   if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) { status("Room codes are 4-64 letters, digits, - or _."); return; }
   if (hall.isLobby(code)) { status(`${code} is the public lobby (enter it above); a room to fly in needs a code of its own.`); return; }
-  if (!fitsRoom(code)) { linked = viaLink; return; }
+  // (The code's prefix is a hint of the game for whoever joins by it, a link's too.  A room made here is of the game
+  // picked, whatever its code says: a code left in the box switched a host back to another game.)
+  if (game) { if (source && source.game.id !== game && holderOf(game)) switchTo(holderOf(game), game); }
+  else if ((viaLink || !create) && !fitsRoom(code)) { linked = viaLink; return; }
   $("join").disabled = true;
+  renderTopAction();
   const solo = create && seatCount() === 1;
   status(solo ? `Making room ${code} for one…` : `Joining room ${code}…`);
   try {
@@ -1522,17 +1721,19 @@ async function joinRoom({ create = true } = {}) {
     renderMission();
     for (const id of ["room", "seats", "server", "relay"]) $(id).disabled = true;
     if (solo) chatLine(`You are ${esc(myName())}, alone in room ${esc(code)}: Fly starts the game as it is, with its own wingman.`, "sys");
-    else chatLine(`You are ${esc(myName())}, player ${game.selfId + 1} of ${game.maxPlayers} in room ${esc(code)}${game.selfId === 0 ? " (host)" : ""}. "Copy link" gives friends the way in.`, "sys");
+    else chatLine(`You are ${esc(myName())}, player ${game.selfId + 1} of ${game.maxPlayers} in room ${esc(code)}${game.selfId === 0 ? " (host)" : ""}. "Copy link" to play with friends.`, "sys");
     log(solo ? `lobby: room ${code} for one (no lobby server)` : `lobby: joined room ${code} as player ${game.selfId} of ${game.maxPlayers}`);
     renderRoster(); updateActions();
     $("chatInput").focus();
   } catch (e) {
     // (A link to a full or dead room is spent: the address loses the code.)
     clearRoomFromAddress();
-    status(e && e.code === "room-not-found" ? `Room ${code} is not open any more: ask for another room in the lobby, or make one.`
-      : e && e.code === "room-full" ? `Room ${code} is full: ask for another room in the lobby, or make one.`
+    status(e && e.code === "room-not-found" ? `Room ${code} is not open${create ? " any more" : ""}: ask for another room in the lobby, or host one.`
+      : e && e.code === "room-full" ? `Room ${code} is full: ask for another room in the lobby, or host one.`
       : `Could not join room ${code}: ${e && e.code ? e.code + ": " : ""}${e && e.message ? e.message : e}.${e && serverDown(e.code) ? " " + OTHER_SERVER : ""}`);
     $("join").disabled = false;
+    if ($("room").value === autoCode) { $("room").value = ""; autoCode = ""; }
+    renderTopAction();
   }
 }
 function clearRoomFromAddress() {
@@ -1542,7 +1743,7 @@ function clearRoomFromAddress() {
 }
 
 // A room code clicked in the public lobby: the pilot wants to be in that
-// room.  One they sit in alone (their own, made by "Join room" or by an
+// room.  One they sit in alone (their own, made by Host or by an
 // advertisement) is left for it; one with company is not left behind by a
 // click.  What came of it is said under the lobby's chat, where the click
 // was, as well as in the status line.
@@ -1550,24 +1751,32 @@ async function joinFromLobby(code) {
   const tell = (text) => { status(text); hall.note(text); };
   if (running) { tell(`Reload the page to join ${code}: this page's game has been started.`); return; }
   if (lobby.game && lobby.game.code === code) { tell(`You are in room ${code} already (step 2).`); return; }
-  let left = "";
+  let left = "", leftMade = false;
   if (lobby.game) {
     const company = lobby.game.players.some((p) => p.occupied && p.id !== lobby.game.selfId);
     if (company) { tell(`You are in room ${lobby.game.code} with somebody: leave it (step 2) to join ${code}.`); return; }
     left = lobby.game.code;
+    leftMade = $("room").value === autoCode;
     chatLine(`You left room ${esc(left)} for ${esc(code)}`, "sys");
     leaveRoom();
+  }
+  // (a room of a free game this browser has not got: the game fetched first)
+  const theirs = codeGame(code), d = theirs && demoOf(theirs.id);
+  if (d && !holderOf(theirs.id)) {
+    tell(`Fetching ${d.title} for room ${code}…`);
+    if (!(await getGame(d))) { tell(`Could not get ${d.title} for room ${code}.`); return; }
   }
   const typed = $("room").value;
   $("room").value = code;
   await joinRoom({ create: false });
   if (lobby.game) {
+    autoCode = code;
     tell(`You are in room ${code} (step 2): the host presses Fly when everyone is in.`);
     $("setup").scrollIntoView({ block: "nearest", behavior: "smooth" });
   } else {
     const why = $("status").textContent;
-    $("room").value = typed; retagRoom();
-    if (left) { await joinRoom(); if (lobby.game) status(why); }  // (back in the room of one's own)
+    $("room").value = typed;
+    if (left) { $("room").value = left; await joinRoom(); if (lobby.game) { status(why); if (leftMade) autoCode = left; } }  // (back in the room of one's own)
     hall.note(why);  // (why not, said where the click was)
   }
 }
@@ -1608,8 +1817,8 @@ $("advertise").addEventListener("click", () => { if (lobby.game) void hall.adver
 // pilots in the lobby are asked for the room they sit in when it has a free
 // seat (hall.findRooms), and one of those that this browser can fly in is
 // joined, at random.  It never makes a room: with none, "No open game found"
-// shows beside the button for a while ("Join room" in step 2 joins the code
-// typed there, or makes that room).  A pilot who ticks Private is not asked
+// shows beside the button for a while (Host in step 2 makes one; Join joins the code
+// typed there).  A pilot who ticks Private is not asked
 // about their room, nor is anyone in the room of a host who ticked it: only
 // its code or its link brings somebody in.
 // Private is not remembered between visits (the user, 2026-11-03: "users
@@ -1625,11 +1834,11 @@ function openRoom() {
   const free = g.players.filter((p) => !p.occupied).length;
   return free > 0 ? { code: g.code, game: lobbyGameId(), free } : null;
 }
-// Can this browser fly in an offered room: the program it plays, and the
-// game its code names (fitsRoom)?
+// Can this browser fly in an offered room: the program it plays is here, or free to fetch?  (The room's code is
+// only its name.)
 function canFly(r) {
-  const prog = gameById(r.game), tagged = codeGame(r.code);
-  return !!prog && !!prog.multiplayer && !!holderOf(prog.id) && (!tagged || !!holderOf(tagged.id));
+  const prog = gameById(r.game);
+  return !!prog && !!prog.multiplayer && (!!holderOf(prog.id) || !!demoOf(prog.id));
 }
 // A word beside the top button, fading after a while.
 let topNoteTimer = null;
@@ -1640,39 +1849,67 @@ function topNote(text, why = "") {
   clearTimeout(topNoteTimer);
   topNoteTimer = setTimeout(() => n.classList.remove("on"), 5000);
 }
-async function joinOpenGame() {
+async function joinOpenGame({ series = false } = {}) {
   if (seeking || lobby.game || running || $("join").disabled) return;
   seeking = true;
   renderTopAction();
+  // The game picked comes first (the user, 2026-11-17: "the join prefers the game they want but if none is available
+  // they join any room where they have the install files available (eg tie demo) or they have it actually installed"):
+  // its open rooms in a random order, then every other game's this browser has or can fetch.  A game is fetched only
+  // when its room's turn comes.  With no room joined the game picked is the pick again.
+  // `series`: the room panel's button, which keeps to the series of the game picked; the top button takes any game,
+  // the picked one's first, then its series'.
+  const mine = source ? source.game.id : "";
+  const kin = (r) => seriesOf(r.game) === seriesOf(mine);
+  const within = series && mine ? seriesName(mine) : "";
+  const typed = $("room").value;
   try {
+    // (a pilot who had left the lobby comes back for this: its pilots are the ones asked)
+    if (!hall.inside() && lobbyReady()) await hall.enter();
     status("Asking the pilots in the lobby for an open game…");
     const found = await hall.findRooms();
     const rooms = found ? found.rooms : [];
-    const fit = rooms.filter(canFly);
+    const able = rooms.filter(canFly);
+    const fit = within ? able.filter(kin) : able;
     for (let i = fit.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [fit[i], fit[j]] = [fit[j], fit[i]]; }
-    const typed = $("room").value;
+    const rank = (r) => (r.game === mine ? 0 : kin(r) ? 1 : 2);
+    fit.sort((a, b) => rank(a) - rank(b));
     for (const r of fit) {
       if (lobby.game || running) return;
+      const g = gameById(r.game), d = demoOf(r.game);
+      if (!holderOf(r.game)) {
+        status(`Fetching ${g.title} for the open room ${r.code}…`);
+        if (!d || !(await getGame(d))) continue;
+        if (lobby.game || running) return;
+      }
       $("room").value = r.code;
-      await joinRoom({ create: false });
+      await joinRoom({ create: false, game: r.game });
       if (lobby.game) {
+        autoCode = r.code;
         // (Said under the lobby's chat as well: the status line is far below.)
-        const text = `You are in room ${r.code}, an open game from the lobby.`;
+        const was = gameById(mine);
+        const text = r.game === mine || !was ? `You are in room ${r.code}, an open ${g.title} room from the lobby.`
+          : `No open ${was.title} room: you are in room ${r.code}, an open ${g.title} room (the Game menu says ${g.title} now).`;
         status(text); hall.note(text);
+        // (a game other than the one picked: said in the room's chat too, where it stays)
+        if (r.game !== mine && was) chatLine(esc(text), "sys");
+        if (r.game !== mine && was) topNote(`No open ${was.short || was.title} room: joined ${g.short || g.title}`, text);
         return;
       }
     }
     if (lobby.game || running) return;
-    $("room").value = typed; retagRoom();
+    $("room").value = typed;
+    if (mine && source && source.game.id !== mine && holderOf(mine)) switchTo(holderOf(mine), mine);
     // (A pilot whose page is older than the question does not answer.)
     const silent = found ? found.asked - found.answered : 0;
     const text = !found ? "Not in the lobby: nobody to ask"
-      : `No open game found${silent ? ` (${silent} pilot${silent === 1 ? "" : "s"} did not answer)` : ""}`;
+      : `No open ${within ? within + " " : ""}game found${silent ? ` (${silent} pilot${silent === 1 ? "" : "s"} did not answer)` : ""}`;
     const why = !found ? "Join open game asks the pilots in the lobby (enter it above)."
       : fit.length ? "The open games were full by the time this page got there."
+      : within && able.length ? `The open games in the lobby are other games: "Join open game" at the top of the page takes any.`
       : rooms.length ? "The open games in the lobby are for games this browser has no files for."
       : silent ? "A page older than Join open game does not answer: a reload brings the new one."
-      : "Nobody in the lobby sits in a room with a free seat that is not private.";
+      : "Nobody in the lobby sits in a room with a free seat that is not private: Host makes one, and Advertise offers it there.";
     topNote(text, why);
     status(`${text}. ${why}`);
   } finally {
@@ -1687,10 +1924,14 @@ function leaveRoom() {
   if (lobby.game) { try { lobby.game.close(); } catch (e) { /* gone */ } }
   lobby.game = null; lobby.unsubscribe = null; lobby.adopted = false; lobby.backlog = []; lobby.hostPrivate = false;
   if (lobby.seatsBefore) { $("seats").value = lobby.seatsBefore; lobby.seatsBefore = null; }
-  lobby.names.clear(); lobby.links.clear(); lobby.flying.clear(); lobby.games.clear();
+  lobby.names.clear(); lobby.links.clear(); lobby.flying.clear(); lobby.games.clear(); lobby.builds.clear();
   // (While the game runs, the button stays: the way out of it.)
   $("lobby").hidden = true; $("leave").hidden = !running; $("share").hidden = true; $("join").disabled = false;
   for (const id of ["room", "seats", "server", "relay"]) $(id).disabled = false;
+  // (a code the page put in the box goes with its room; one the pilot typed stays)
+  if ($("room").value === autoCode) $("room").value = "";
+  autoCode = "";
+  followFetched.clear();
   $("chatForm").hidden = false;
   $("roster").innerHTML = "";
   updateActions();
@@ -1715,9 +1956,32 @@ function leaveButton() {
 // first, as the browser does for a document not yet saved.
 window.addEventListener("beforeunload", (ev) => { if (running && !leavingForGood) { ev.preventDefault(); ev.returnValue = ""; } });
 
-$("setup").addEventListener("submit", (ev) => { ev.preventDefault(); void joinRoom(); });
+// Host makes the room (or sits down in it, when the code typed is a room that is there); Join, and Enter in the code's
+// box, only join a room that exists; Join open game asks the lobby.
+// Host offers its room in the lobby, as Advertise does, unless Private is ticked (the user, 2026-11-17: "the
+// non-private one advertises in the lobby unless players was bumped down to 1"; then "there's already a private
+// checkbox. Forget the host private. It should advertise unless they check that private box").  A room of one is
+// offered to nobody; a room that was there already (the code typed was somebody's) is its host's to offer.  Fly Alone
+// stays for a room the button offered (hostOffered), as nobody may come.  (?advertise=off: the page tests' rooms, said
+// by hand.)
+const hostOffered = new Set();
+async function hostRoom() {
+  if (lobby.game || $("join").disabled) return;
+  await joinRoom();
+  if (!lobby.game || soloRoom() || privateOn() || !isHost() || query.get("advertise") === "off") return;
+  const code = lobby.game.code;
+  hostOffered.add(normalizeCode(code));
+  const offered = await hall.advertise();
+  updateActions();
+  const text = offered ? `You host room ${code}, offered in the lobby: Fly when somebody joins, or Fly Alone.`
+    : `You host room ${code}. It could not be said in the lobby just now (Advertise there says it again; "Copy link" for friends).`;
+  status(text); hall.note(text);
+}
+$("join").addEventListener("click", () => void hostRoom());
+$("setup").addEventListener("submit", (ev) => { ev.preventDefault(); void joinRoom({ create: false }); });
+$("findRoom").addEventListener("click", () => void joinOpenGame({ series: true }));
 // (Players: 1, 2 or 3, whatever is typed; three is in beta.)
-$("seats").addEventListener("input", () => { $("seatsBeta").hidden = seatCount() < 3; });
+$("seats").addEventListener("input", () => { $("seatsBeta").hidden = seatCount() < 3; if (!lobby.game) updateActions(); });
 $("seats").addEventListener("change", () => { $("seats").value = seatCount(); $("seatsBeta").hidden = seatCount() < 3; });
 $("leave").addEventListener("click", leaveButton);
 // The link to this room, to the clipboard (shown in the status line where
@@ -1801,7 +2065,7 @@ buildMissionMenu();
 
 $("fly").addEventListener("click", () => {
   if (!source || !lobby.game || running || guestWaits()) return;
-  if (isHost()) for (const [seat, rel] of lobby.builds) if (rel !== "same") chatLine(esc(buildApart(seat)) + " They will not fly along until then.", "sys");
+  if (isHost()) for (const [seat, rel] of lobby.builds) if (rel !== "same") chatLine(`${esc(lobby.names.get(seat) || `Player ${seat + 1}`)} won't fly along (${rel === "site" ? "another page" : rel === "newer" ? "this page is out of date" : "their page is out of date"}).`, "sys");
   if (isHost()) sendLobby({ t: "start", game: source.game.id, mission: missionKey(lobby.mission), rocks: lobby.rocks, wingBumps: lobby.wingBumps, latency: lobby.latency, fps: lobby.fps, capHull: lobby.capHull });
   void start(true);
 });
@@ -1811,15 +2075,17 @@ $("flySolo").addEventListener("click", async () => {
   if (!source || running || (lobby.game && !aloneInRoom())) return;
   const code = lobby.game ? lobby.game.code : normalizeCode($("room").value.trim()), seats = $("seats").value;
   const keep = lobby.game ? { mission: lobby.mission, rocks: lobby.rocks, wingBumps: lobby.wingBumps, latency: lobby.latency, fps: lobby.fps, capHull: lobby.capHull } : {};
+  const made = !!code && code === autoCode;
   if (lobby.game) leaveRoom();
   $("room").value = code;
   $("seats").value = "1";
   await joinRoom();
+  if (made && lobby.game) autoCode = code;
   lobby.seatsBefore = seats;            // (the Players box as it was, back when this room of one is left)
   if (!soloRoom()) return;
   Object.assign(lobby, keep);
   renderMission();
-  log(`lobby: ${code} flown single player: a room of one, nobody told`);
+  log(`lobby: ${lobby.game.code} flown single player: a room of one, nobody told`);
   void start(true);
 });
 $("fullscreen").addEventListener("click", () => goFullscreen());
@@ -1860,6 +2126,32 @@ gameLook();
 const PRIV_FACE_KEY = "wc:privFace";
 try { const f = localStorage.getItem(PRIV_FACE_KEY); if (f && [...$("privFace").options].some((o) => o.value === f)) $("privFace").value = f; } catch (e) { /* the first */ }
 $("privFace").addEventListener("change", () => { try { localStorage.setItem(PRIV_FACE_KEY, $("privFace").value); } catch (e) { /* not kept */ } });
+// Terminal Velocity's craft menus: the registered game's craft of its other planets (the models in its CDROM.POD, the
+// names its briefings'; src/cpu/wcnet_tv_session.cpp's table) after the shareware's, offered while the game here is
+// the registered one (tvCraftOffer); remembered in this browser
+const TV_FULL_CRAFT = [["ddcshp.bin", "Crythanian Shockstar"], ["afighter.bin", "WSF Razor-4"], ["dogg.bin", "TTA Sandstorm"],
+  ["pooh.bin", "TTA Dustdevil"], ["deboss.bin", "TTA Penetrator"], ["lavash.bin", "OSO Phoenix"], ["triship.bin", "Ositsho Wedge"],
+  ["volship.bin", "Ositsho Quadram"], ["litecr.bin", "Erigonean Shriek"], ["bugship.bin", "CAF Attack Fighter"],
+  ["podgun1.bin", "DTS-1"], ["pincher.bin", "XI Coreguard"]];
+for (const id of ["tvCraftHost", "tvCraftGuest"]) {
+  for (const [value, text] of TV_FULL_CRAFT) {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = text; o.dataset.full = "1"; o.hidden = true;
+    $(id).append(o);
+  }
+}
+function tvCraftOffer() {
+  const full = !!(source && source.game.id === "tv" && source.files.some((f) => /(^|\/)CDROM\.POD$/i.test(f.path)));
+  for (const id of ["tvCraftHost", "tvCraftGuest"]) {
+    for (const o of $(id).options) if (o.dataset.full) o.hidden = o.disabled = !full;
+    if ($(id).selectedOptions[0] && $(id).selectedOptions[0].disabled) $(id).value = "ship.bin";
+  }
+}
+for (const id of ["tvCraftHost", "tvCraftGuest"]) {
+  const key = "wc:" + id;
+  try { const v = localStorage.getItem(key); if (v && [...$(id).options].some((o) => o.value === v)) $(id).value = v; } catch (e) { /* the first */ }
+  $(id).addEventListener("change", () => { try { localStorage.setItem(key, $(id).value); } catch (e) { /* not kept */ } });
+}
 const FULL_START_KEY = "wc:fullStart";
 try { if (sessionStorage.getItem(FULL_START_KEY) === "off") $("fullStart").checked = false; } catch (e) { /* ticked */ }
 $("fullStart").addEventListener("change", () => { try { sessionStorage.setItem(FULL_START_KEY, $("fullStart").checked ? "on" : "off"); } catch (e) { /* not kept */ } });
@@ -1970,8 +2262,10 @@ async function start(fromGesture) {
     if (fpsInForce()) env.WCFPS = String(fpsInForce());
     if (together && lobbyCapHull() && lobby.capHull) env.WCCAPHULL = String(CAP_HULL);
     if (cfg.callsign && !solo) env.WCCALLSIGN = cfg.callsign;
-    if (isTf()) env.WCNET_TIE_MOUSE = tfFlight();
+    env.WCGAME = source.game.id;     // (the game this run is for: the TIE demo's room lives from the boot on, wcnet_tiedemo.cpp)
+    if (isTie()) env.WCNET_TIE_MOUSE = tfFlight();
     if (isPriv()) env.WCPRIVFACE = $("privFace").value;
+    if (isTv() && together && isHost()) env.WCTVLOOKS = `${$("tvCraftHost").value},${$("tvCraftGuest").value}`;
     if (cfg.lastname && !solo) env.WCLASTNAME = cfg.lastname;
     if (cfg.firstname && !solo) env.WCFIRSTNAME = cfg.firstname;
     // A wingman's game calls the leader's ship by the leader's callsign (the
@@ -2040,7 +2334,7 @@ async function start(fromGesture) {
     // (a game's own settings made fit for the browser: the registry's `prepare`, TIE Fighter's music)
     if (gameInfo() && gameInfo().prepare) {
       try {
-        const said = gameInfo().prepare(Module.FS, GAME_ROOT);
+        const said = gameInfo().prepare(Module.FS, GAME_ROOT, { joystick: joystickPort });
         if (said) log(said);
       } catch (e) {
         log(`preparing ${source.game.title}'s settings: ${e.message || e}`);
@@ -2074,13 +2368,19 @@ async function start(fromGesture) {
     const cmd = query.get("cmd") || source.game.run + missionArgs + (query.get("res") === "1" && isRv ? " /res 1" : "")
       + (field ? ` /field ${field}` : "") + (query.get("nogx") === "1" && isRv ? " /nogx" : "");
     // The emulated CPU speed: the game's own good value (the registry), or
-    // ?cycles=N; Ctrl+F11 / Ctrl+F12 still adjust it while playing.
-    const cycles = Number(query.get("cycles")) || (gameInfo() && gameInfo().cycles) || 0;
+    // ?cycles=N; Ctrl+F11 / Ctrl+F12 still adjust it while playing.  A game
+    // whose registry says `cyclesAuto` (or ?cycles=max) gets DOSBox's own
+    // automatic cycles, up to its value: as many as this computer runs in
+    // real time with room left for the browser's sound and picture.
+    const askedCycles = query.get("cycles");
+    const cycles = Number(askedCycles) || (gameInfo() && gameInfo().cycles) || 0;
+    const autoCycles = askedCycles === "max" || (!Number(askedCycles) && !!(gameInfo() && gameInfo().cyclesAuto));
     const args = ["-c", `mount c ${GAME_ROOT}`];
     // The game's disc, where it comes with one (the registry's image): drive D.
     if (gameInfo() && gameInfo().image) args.push("-c", `imgmount d ${GAME_ROOT}/${gameInfo().image} -t iso`);
     args.push("-c", "c:");
-    if (cycles > 0) args.push("-c", `cycles=${Math.round(cycles)}`);
+    if (autoCycles) args.push("-c", `cycles=max${cycles > 0 ? ` limit ${Math.round(cycles)}` : ""}`);
+    else if (cycles > 0) args.push("-c", `cycles=${Math.round(cycles)}`);
     // What the game's own setup expects of the machine (the registry), as a
     // configuration file: DOSBox's `config -set` rewrites the list of
     // startup commands it is itself run from, and the game's is lost.
@@ -2104,7 +2404,7 @@ async function start(fromGesture) {
     touch.show(true);
     if (fromGesture && $("fullStart").checked) goFullscreen();
     status(together
-      ? `Room ${cfg.code}. "Copy link" (step 2) gives friends the way in.`
+      ? `Room ${cfg.code}. "Copy link" (step 2) to play with friends.`
       : `${source.game.title} is running.`);
   } catch (e) {
     running = false;
@@ -2234,7 +2534,15 @@ const touch = initTouch({ log, send: (name, down) => {
 const TF_FLIGHT = ["drag", "pointer", "keyboard", "joystick", "pointerbank"];   // (the emulator's mode numbers)
 const TF_FLIGHT_KEY = "wc-tf-flight";
 const isTf = () => !!(gameInfo() && gameInfo().id === "tf");
+// (TIE Fighter or its 1994 demo: the same Flight choice and controller, the user: "point to aim mouse mode should be
+// default. They can select drag to aim just like on cd version. also joystick should be like cd version too")
+const isTfd = () => !!(gameInfo() && gameInfo().id === "tiedemo");
+const isTie = () => isTf() || isTfd();
 const isPriv = () => !!(gameInfo() && (gameInfo().id === "priv" || gameInfo().id === "privrf"));
+const isTv = () => !!(gameInfo() && gameInfo().id === "tv");
+const isRap = () => !!(gameInfo() && gameInfo().id === "rap");
+// (the room's game, the loaded one's or the lobby's)
+function isTvRoom() { return lobbyGameId() === "tv" || isTv(); }
 function tfFlight() {
   let v = null;
   try { v = localStorage.getItem(TF_FLIGHT_KEY); } catch (e) { /* none */ }
@@ -2246,7 +2554,7 @@ $("tfFlight").addEventListener("change", (e) => {
   try { localStorage.setItem(TF_FLIGHT_KEY, v); } catch (err) { /* this browser keeps nothing */ }
   const M = running && window.DOSBox;
   if (M && M._wc_web_tie_mouse) M._wc_web_tie_mouse(TF_FLIGHT.indexOf(v));
-  log(`TIE Fighter's flight controls: ${e.target.selectedOptions[0].textContent}`);
+  log(`${isTfd() ? "The TIE Fighter demo's" : "TIE Fighter's"} flight controls: ${e.target.selectedOptions[0].textContent}`);
 });
 
 // TIE Fighter's own meanings for a controller's buttons where Wing Commander's keys mean another thing there, or
@@ -2262,15 +2570,57 @@ const TF_PAD = {
   lock: { keys: ["r"], label: "Lock target (TIE Fighter: the nearest enemy)" },
   comms: { keys: [], label: "Communications (nothing in TIE Fighter)" },
 };
+// The TIE Fighter demo's (its flight keys, the page's keys line): Backspace full throttle, X single, dual or quad fire,
+// R the nearest enemy fighter, W the bomber's torpedoes (and back to the lasers: the trigger fires either); no
+// autopilot, map or comms.
+const TFD_PAD = {
+  missile: { keys: ["w"], label: "Fire missile (the TIE Fighter demo: W picks the torpedoes, or the lasers again; the trigger fires them)" },
+  burner: { keys: ["backspace"], label: "Afterburner (the TIE Fighter demo: full throttle)" },
+  nav: { keys: [], label: "Navigation map (nothing in the TIE Fighter demo)" },
+  auto: { keys: [], label: "Autopilot (nothing in the TIE Fighter demo)" },
+  gunsel: { keys: ["x"], label: "Change guns (the TIE Fighter demo: single, dual or quad fire)" },
+  lock: { keys: ["r"], label: "Lock target (the TIE Fighter demo: the nearest enemy fighter)" },
+  comms: { keys: [], label: "Communications (nothing in the TIE Fighter demo)" },
+};
+const tiePad = () => (isTfd() ? TFD_PAD : TF_PAD);
+// Raptor's keys for a controller's buttons (the user: "Please add gamepad support if selected on the menu"): Ctrl fires,
+// Alt the special weapon, Space picks the next special, the right Shift the mega bomb (its own keys, SETUP.INI's
+// defaults); Start is Enter in its menus and P (pause) in a wave, Back is Esc.  The stick and the D-pad are its arrows
+// (stickKeys below): the game's own joystick is no more than its arrows (full speed past a third of the stick, in its
+// INPUT.C), and its menus take the arrows too.
+const RAP_PAD = {
+  guns: { keys: ["leftctrl"], label: "Fire guns (Raptor: fire; in its menus a click)" },
+  missile: { keys: ["leftalt"], label: "Fire missile (Raptor: the special weapon)" },
+  target: { keys: ["space"], label: "Change target (Raptor: the next special weapon)" },
+  weapon: { keys: ["rightshift"], label: "Change weapon (Raptor: the mega bomb)" },
+  faster: { keys: [], label: "Speed up (nothing in Raptor)" },
+  slower: { keys: [], label: "Slow down (nothing in Raptor)" },
+  burner: { keys: [], label: "Afterburner (nothing in Raptor)" },
+  nav: { keys: ["esc"], label: "Navigation map (Raptor: Esc: out of a menu; in a wave it asks to abort the mission)" },
+  auto: { keys: ["enter"], flight: ["p"], label: "Autopilot (Raptor: Enter in its menus, pause in a wave)" },
+  up: { keys: [], label: "Up (Raptor: the D-pad and the stick fly the ship)" },
+  down: { keys: [], label: "Down (Raptor: the D-pad and the stick fly the ship)" },
+  gunsel: { keys: [], label: "Change guns (nothing in Raptor)" },
+  lock: { keys: [], label: "Lock target (nothing in Raptor)" },
+  comms: { keys: [], label: "Communications (nothing in Raptor)" },
+};
+const rapKeys = (id) => {
+  const k = RAP_PAD[id];
+  if (!k) return null;
+  const M = running && window.DOSBox;
+  return k.flight && M && M._wc_web_in_flight && M._wc_web_in_flight() ? k.flight : k.keys;
+};
 const controls = initControls({
   module: () => (running && window.DOSBox) || null,
   // (TIE Fighter: a controller steers through the emulator's stick, whatever the mouse does, rolls on the keypad's
   // Ins and Del as the emulator has it, and fires with the mouse's button, the game's own trigger)
-  directStick: () => isTf(),
-  rollKeys: () => (isTf() ? { left: "kp0", right: "kpperiod" } : null),
-  actionKeys: (id) => (isTf() && TF_PAD[id] ? TF_PAD[id].keys : null),
-  actionLabel: (id) => (isTf() && TF_PAD[id] ? TF_PAD[id].label : null),
-  fireByMouse: () => isTf(),
+  directStick: () => isTie(),
+  rollKeys: () => (isTie() ? { left: "kp0", right: "kpperiod" } : null),
+  actionKeys: (id) => (isTie() && tiePad()[id] ? tiePad()[id].keys : isRap() ? rapKeys(id) : null),
+  actionLabel: (id) => (isTie() && tiePad()[id] ? tiePad()[id].label : isRap() && RAP_PAD[id] ? RAP_PAD[id].label : null),
+  // (Raptor: the stick in a wave and the D-pad everywhere are its arrow keys, the stick past 30% of its travel)
+  stickKeys: () => (isRap() ? { left: "left", right: "right", up: "up", down: "down", at: 0.3 } : null),
+  fireByMouse: () => isTie(),
   // (A controller button without a key of its own is the page's: push to talk.)
   onAction: (id, down) => { if (id === "ptt") voice.ptt(down); },
   pointer: steeringPointer,
@@ -2286,7 +2636,7 @@ void initSources();
 // the room, as soon as the game files are there (setSource).  A page
 // without them joins nothing by itself: whoever opens the link, or whatever
 // does, has said nothing to the lobby server until a game is loaded or
-// "Join room" is pressed.
+// Host or Join is pressed.
 function joinLinked() { if (linkWaits() && lobbyReady()) void joinRoom(); }
 updateActions();
 // The public lobby is where a pilot with a game to fly is unless it left:

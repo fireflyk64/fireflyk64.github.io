@@ -52,7 +52,7 @@
 // keeps the room private ({t: "room", n, code, game, free}; opts.openRoom
 // says).  The asking page picks one it can fly in (web/wc.js).
 import { checkMessage, checkName, sameName, makeBucket, lineEvery, splitCodes, whyText, lobbyCode, isLobbyCode, LOBBY_CODE, RATE, MAX_CHARS, MAX_NAME, GAME_TAGS } from "./chatfilter.js";
-import { buildFields, compareBuild, builtWhen, RELOAD_HOW } from "./build.js";
+import { buildFields, compareBuild, RELOAD_HOW } from "./build.js";
 
 const SEATS = 32;                 // asked for (what the public server gives a room; 32 pilots at a line every ten seconds are three lines a second); a server that gives fewer says how many
 const CLAIM_SEATS = 256;          // a full lobby is asked for seats up to here: another page may have made it bigger
@@ -540,8 +540,8 @@ export function initHall(opts) {
       // once; its rooms and its flights would not match theirs.
       if (!staleSaid && compareBuild(m) === "newer") {
         staleSaid = true;
-        sys(`This page is an older build than ${name.ok ? name.text : fallbackName(id)}'s (theirs built ${builtWhen(m.built)}): ${RELOAD_HOW} to fly with the pilots here.`);
-        log(`lobby: this page is an older build than pilot ${id + 1}'s (${m.build}, built ${builtWhen(m.built)})`);
+        sys(`A newer version of this page is out: ${RELOAD_HOW}.`);
+        log(`lobby: pilot ${id + 1}'s page is a newer build (${m.build})`);
       }
       // Called as this page's given callsign: one of the two takes another.
       const was = myName();
@@ -709,8 +709,10 @@ export function initHall(opts) {
     show();
     // (the user's words, 2026-11-04: the rules of the chat had been here, "not resonating with the users"; the filter
     // still keeps them, and says so when it turns a line away)
-    const gog = el("a", "", "https://www.gog.com/en/game/wing_commander_1_2");
-    gog.href = "https://www.gog.com/en/game/wing_commander_1_2";
+    // (GOG's store since 2026-11-05: the 35th Anniversary Edition packs, whose installer the page takes as it takes
+    // the Legacy Edition's beside it; the "Wing Commander 1+2" page the line named until then is gone)
+    const gog = el("a", "", "GOG");
+    gog.href = "https://www.gog.com/en/game/wing_commander_35th_anniversary_edition";
     gog.target = "_blank";
     gog.rel = "noopener";
     line("sys", "Please download Wing Commander from ", gog,
