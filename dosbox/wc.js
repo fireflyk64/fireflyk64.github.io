@@ -1141,6 +1141,30 @@ const seatCount = () => Math.min(maxSeats(), Math.max(1, Math.round(Number($("se
 // choice there; a room's link or "Join open game" still joins a room.
 const phoneLike = () => { try { return matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches; } catch (e) { return false; } };
 if (phoneLike()) $("seats").value = "1";
+// On a phone the page is a long column and the next thing to press was hard to find (the user, 2026-11-19: "there's a
+// lot to scroll through. Can there be a "Fly Solo" button that starts a 1 player room and joins it and then scrolls
+// down to the game part ... a flashing button for next steps ... and scrolling down when you click it to the next
+// thing... eg host tie fighter scrolls down to the room which has the glowing fly game. and click that and it scrolls
+// down to the controls").  So there: Fly Solo at the top; the next button to press pulses (renderTopAction, the
+// page's styles' html.phone .next-step); a room joined scrolls to its Fly button, the game started to its picture
+// and the touch controls under it.
+const PHONE = phoneLike();
+document.documentElement.classList.toggle("phone", PHONE);
+let roomScroll = true;      // (false while Fly Solo makes its room: the one scroll is the game's)
+function scrollToFly() { if (PHONE && roomScroll) $("fly").scrollIntoView({ block: "center", behavior: "smooth" }); }
+// (the page grows as the game starts, the room's lines and the touch controls coming in: the picture is brought to the
+// window's top again once they have, unless the pilot has scrolled meanwhile)
+function scrollToGame() {
+  if (!PHONE) return;
+  let mine = -1;
+  const go = () => {
+    if (mine >= 0 && Math.abs(scrollY - mine) > 40) return;     // (scrolled by hand since: left there)
+    $("screen").scrollIntoView({ block: "start", behavior: "auto" });
+    mine = scrollY;
+  };
+  requestAnimationFrame(go);
+  for (const ms of [300, 900, 2000]) setTimeout(go, ms);
+}
 
 function encodeLobby(obj) {
   const json = new TextEncoder().encode(JSON.stringify(obj));
@@ -1445,6 +1469,14 @@ function renderTopAction() {
   if (step === "room") b.disabled = seeking;
   $("findRoom").disabled = $("joinCode").disabled = seeking || $("join").disabled;
   b.textContent = { screen: "Full screen", files: "Load game files", room: "Join open game", fly: "Fly" }[step];
+  // (a phone: Fly Solo beside it until there is a room; the next button to press pulses, none once the game runs)
+  const solo = $("topSolo");
+  solo.hidden = !PHONE || running || !source || !!lobby.game;
+  solo.disabled = seeking || $("join").disabled;
+  const next = running ? null : !lobby.game ? (solo.hidden ? null : solo) : $("fly").disabled ? null : $("fly");
+  solo.classList.toggle("next-step", next === solo);
+  $("fly").classList.toggle("next-step", next === $("fly"));
+  b.classList.toggle("next-step", next === $("fly") && step === "fly");
   b.title = { screen: "The game full screen; holding Esc leaves it",
               files: "Your own Wing Commander or Wing Commander II: a .zip of the game folder, or the GOG installer",
               room: FIND_TITLE,
@@ -1724,7 +1756,8 @@ async function joinRoom({ create = true, game = null } = {}) {
     else chatLine(`You are ${esc(myName())}, player ${game.selfId + 1} of ${game.maxPlayers} in room ${esc(code)}${game.selfId === 0 ? " (host)" : ""}. "Copy link" to play with friends.`, "sys");
     log(solo ? `lobby: room ${code} for one (no lobby server)` : `lobby: joined room ${code} as player ${game.selfId} of ${game.maxPlayers}`);
     renderRoster(); updateActions();
-    $("chatInput").focus();
+    if (PHONE) scrollToFly();           // (and no focus in the chat's box: it would raise the phone's keyboard)
+    else $("chatInput").focus();
   } catch (e) {
     // (A link to a full or dead room is spent: the address loses the code.)
     clearRoomFromAddress();
@@ -2071,7 +2104,7 @@ $("fly").addEventListener("click", () => {
 });
 // Fly Alone: the empty room left for a room of one of the same code (soloGame: no lobby server, nobody can
 // come in, no advertisement), the mission and the settings picked kept, and the flight started as Fly would
-$("flySolo").addEventListener("click", async () => {
+async function flyAlone() {
   if (!source || running || (lobby.game && !aloneInRoom())) return;
   const code = lobby.game ? lobby.game.code : normalizeCode($("room").value.trim()), seats = $("seats").value;
   const keep = lobby.game ? { mission: lobby.mission, rocks: lobby.rocks, wingBumps: lobby.wingBumps, latency: lobby.latency, fps: lobby.fps, capHull: lobby.capHull } : {};
@@ -2079,7 +2112,8 @@ $("flySolo").addEventListener("click", async () => {
   if (lobby.game) leaveRoom();
   $("room").value = code;
   $("seats").value = "1";
-  await joinRoom();
+  roomScroll = false;
+  try { await joinRoom(); } finally { roomScroll = true; }
   if (made && lobby.game) autoCode = code;
   lobby.seatsBefore = seats;            // (the Players box as it was, back when this room of one is left)
   if (!soloRoom()) return;
@@ -2087,7 +2121,10 @@ $("flySolo").addEventListener("click", async () => {
   renderMission();
   log(`lobby: ${lobby.game.code} flown single player: a room of one, nobody told`);
   void start(true);
-});
+}
+$("flySolo").addEventListener("click", () => void flyAlone());
+// (the top's Fly Solo, a phone's: the same, from the top of the page; the game's start scrolls down to it)
+$("topSolo").addEventListener("click", () => void flyAlone());
 $("fullscreen").addEventListener("click", () => goFullscreen());
 
 // The picture's shape: the game's own (the registry's `screen`: TIE Fighter's 640 x 480, every row of it), for the game
@@ -2204,9 +2241,35 @@ window.addEventListener("keydown", (e) => {
   e.preventDefault();
 }, true);
 
+// The game's sound, started by the pilot's own touch (the user, 2026-11-19: "I'm no longer hearing sound happening on
+// my mobile...  I can hear sound on youtube").  A browser lets a page's sound begin only from a touch or a key.  The
+// emulator makes its sound some seconds after Fly was pressed, files and program first, and then asks the browser to
+// start it from a timer: Chrome takes that (a page touched once is trusted), an iPhone's Safari does not, and in flight
+// the page keeps the picture's touches from the emulator, so no later touch started it either.  So the page makes the
+// sound's context itself, in the touch that starts the game (Fly, Fly Solo, the top's button, a touch of the picture),
+// hands it to the emulator (the module's SDL2.audioContext, which its audio code takes when there is one), and starts
+// it again at any touch or key that finds it stopped.  And an iPhone's ringer switch silences a page's sound, though
+// not a video's (YouTube plays on): where the browser has an audio session (iOS 17) the page says its sound is
+// playback, while Voice is off (a microphone's session is the system's to choose).
+let gameAudio = null;
+function unlockAudio(make) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!gameAudio && make && AC) gameAudio = new AC();
+    const sdl = window.DOSBox && window.DOSBox.SDL2 && window.DOSBox.SDL2.audioContext;
+    for (const ctx of [gameAudio, sdl]) if (ctx && ctx.state === "suspended") void ctx.resume();
+    if (PHONE && navigator.audioSession) navigator.audioSession.type = $("voice").value === "off" ? "playback" : "auto";
+  } catch (e) { /* no sound is no reason to stop */ }
+}
+for (const ev of ["pointerdown", "pointerup", "touchend", "click", "keydown"]) {
+  window.addEventListener(ev, (e) => unlockAudio(!!(e.target && e.target.closest && e.target.closest("#topAction, #topSolo, #fly, #flySolo, #screen"))),
+    { capture: true, passive: true });
+}
+
 async function start(fromGesture) {
   if (running) return;
   running = true;
+  scrollToGame();
   // A pad picked "built in" is the game port's joystick, which the game
   // looks for once, when it starts: the port goes into this launch's
   // configuration or into none (see below).
@@ -2264,8 +2327,9 @@ async function start(fromGesture) {
     if (cfg.callsign && !solo) env.WCCALLSIGN = cfg.callsign;
     env.WCGAME = source.game.id;     // (the game this run is for: the TIE demo's room lives from the boot on, wcnet_tiedemo.cpp)
     if (isTie()) env.WCNET_TIE_MOUSE = tfFlight();
-    // (a phone or a tablet has no F9: each flight starts with the lasers' recharge one step up, wcnet_tie_controls.cpp)
-    if (isTie() && phoneLike()) env.WCNET_TIE_TOUCH = "1";
+    // (each flight starts with the lasers' recharge one step up, wcnet_tie_controls.cpp: a phone or a tablet has no F9,
+    // and on a computer too: the user, 2026-11-19, "would be useful on desktop web too not just mobile")
+    if (isTie()) env.WCNET_TIE_TOUCH = "1";
     if (isPriv()) env.WCPRIVFACE = $("privFace").value;
     if (isTv() && together && isHost()) env.WCTVLOOKS = `${$("tvCraftHost").value},${$("tvCraftGuest").value}`;
     if (cfg.lastname && !solo) env.WCLASTNAME = cfg.lastname;
@@ -2300,6 +2364,7 @@ async function start(fromGesture) {
     const config = {
       canvas,
       P2PGame,
+      ...(gameAudio ? { SDL2: { audioContext: gameAudio } } : {}),     // (the sound's context, made in the pilot's touch: unlockAudio)
       lobbyGame: () => lobby.game,    // the transport adopts the connection the page is in when the game asks
       takeLobbyBacklog: () => { lobby.adopted = true; return lobby.backlog.splice(0); },
       onLobbyClosed: () => { chatLine("The game left the room", "sys"); leaveRoom(); },
@@ -2404,6 +2469,7 @@ async function start(fromGesture) {
     for (const ev of ["pagehide", "visibilitychange"]) window.addEventListener(ev, keepSaves);
     $("fullscreen").hidden = !(screenEl.requestFullscreen || screenEl.webkitRequestFullscreen);   // (an iPhone has none)
     touch.show(true);
+    scrollToGame();
     if (fromGesture && $("fullStart").checked) goFullscreen();
     status(together
       ? `Room ${cfg.code}. "Copy link" (step 2) to play with friends.`
