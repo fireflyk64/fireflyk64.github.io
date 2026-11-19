@@ -156,6 +156,15 @@ figcaption { font-size: 13.5px; color: var(--muted); margin-top: 8px; max-width:
 .yts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 16px; max-width: 1340px; }
 .yts .yt { max-width: none; }
 .yts .ytcap { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
+.ytnav { display: none; font-size: 13.5px; color: var(--muted); margin: 8px 0 0; }
+.ytnav a { display: inline-block; min-width: 28px; padding: 2px 8px; margin-left: 4px; text-align: center; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; }
+/* phones: one video at a time, the next peeking in, swiped across (or the 1 / 2 under them) */
+@media (max-width: 700px) {
+  .yts { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: 2px; }
+  .yts::-webkit-scrollbar { display: none; }
+  .yts > div { flex: 0 0 86%; scroll-snap-align: start; scroll-margin-top: 16px; }
+  .ytnav { display: block; }
+}
 p.formula { font-family: var(--mono); font-size: 15px; text-align: center; margin: 18px 0; max-width: 72ch; }
 article p { margin: 0 0 14px; }
 .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
@@ -196,11 +205,12 @@ a.related:hover .related-title { color: var(--accent); }
 
 <figure id="fig-video" class="wide video">
 <div class="yts">
-<div><div class="yt"><iframe src="https://www.youtube.com/embed/XOnk7eNtB04" title="Reverse engineering Wing Commander for two players" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+<div id="vid-1"><div class="yt"><iframe src="https://www.youtube.com/embed/XOnk7eNtB04" title="Reverse engineering Wing Commander for two players" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 <p class="ytcap"><a href="https://www.youtube.com/watch?v=XOnk7eNtB04">Watch on YouTube</a>: Wing Commander Co-Op, reverse engineering x86 assembly and memory to add multiplayer</p></div>
-<div><div class="yt"><iframe src="https://www.youtube.com/embed/KIk3FHeE8H8" title="Wing Commander II Together: New Ships and Brief History" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+<div id="vid-2"><div class="yt"><iframe src="https://www.youtube.com/embed/KIk3FHeE8H8" title="Wing Commander II Together: New Ships and Brief History" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
 <p class="ytcap"><a href="https://www.youtube.com/watch?v=KIk3FHeE8H8">Watch on YouTube</a>: Wing Commander II Together, new ships and a brief history</p></div>
 </div>
+<p class="ytnav">Two videos: swipe across, or tap <a href="#vid-1">1</a><a href="#vid-2">2</a></p>
 </figure>
 
 <p class="playnow"><a href="https://fireflyk64.github.io/dosbox/">Play it in your browser</a></p>
