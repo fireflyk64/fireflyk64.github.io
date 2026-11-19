@@ -153,6 +153,9 @@ figcaption { font-size: 13.5px; color: var(--muted); margin-top: 8px; max-width:
 .trio figure img { width: 100%; }
 .yt { position: relative; aspect-ratio: 16 / 9; max-width: 1100px; background: #000; border: 1px solid var(--line); }
 .yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.yts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 16px; max-width: 1340px; }
+.yts .yt { max-width: none; }
+.yts .ytcap { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
 p.formula { font-family: var(--mono); font-size: 15px; text-align: center; margin: 18px 0; max-width: 72ch; }
 article p { margin: 0 0 14px; }
 .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
@@ -192,8 +195,12 @@ a.related:hover .related-title { color: var(--accent); }
 </a>
 
 <figure id="fig-video" class="wide video">
-<div class="yt"><iframe src="https://www.youtube.com/embed/XOnk7eNtB04" title="Reverse engineering Wing Commander for two players" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
-<figcaption><a href="https://www.youtube.com/watch?v=XOnk7eNtB04">Watch on YouTube</a></figcaption>
+<div class="yts">
+<div><div class="yt"><iframe src="https://www.youtube.com/embed/XOnk7eNtB04" title="Reverse engineering Wing Commander for two players" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+<p class="ytcap"><a href="https://www.youtube.com/watch?v=XOnk7eNtB04">Watch on YouTube</a>: Wing Commander Co-Op, reverse engineering x86 assembly and memory to add multiplayer</p></div>
+<div><div class="yt"><iframe src="https://www.youtube.com/embed/KIk3FHeE8H8" title="Wing Commander II Together: New Ships and Brief History" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>
+<p class="ytcap"><a href="https://www.youtube.com/watch?v=KIk3FHeE8H8">Watch on YouTube</a>: Wing Commander II Together, new ships and a brief history</p></div>
+</div>
 </figure>
 
 <p class="playnow"><a href="https://fireflyk64.github.io/dosbox/">Play it in your browser</a></p>
