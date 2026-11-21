@@ -1,5 +1,5 @@
 {
- "build": "0fd6a817",
+ "build": "a8e70129",
  "ships": {
   "SHIP00": {
    "file": "rv/SHIP00.RV.gz",
@@ -199,7 +199,7 @@
   "ENIGMAP.PLN": {
    "file": "rv/ENIGMAP.PLN.gz",
    "bytes": 11741786,
-   "sha1": "b2e8583087211a448b76dda5985f0552579b2ee3"
+   "sha1": "6a58c33d7bc27f5e6a21864279449a7c1a3f1837"
   },
   "ENIGMAT.PLN": {
    "file": "rv/ENIGMAT.PLN.gz",
