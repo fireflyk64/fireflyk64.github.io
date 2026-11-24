@@ -4,7 +4,7 @@
 // logic step in lockstep on every machine, and a page left open across a deploy keeps its old ones until it is
 // reloaded.  scripts/build-web.sh writes the line below into the copy it deploys: the commit ("+" for a tree with
 // changes) and the moment of the build, in seconds.  A page served from the tree says "dev" and is never compared.
-export const PAGE_BUILD = { id: "e66f65fb-1795481245", at: 1795481245 };
+export const PAGE_BUILD = { id: "c8390429-1795484025", at: 1795484025 };
 
 // The site within the origin this page is (/dosbox/, /terrain/: the terrain branch's playtest copy is another game
 // for now, on the same lobby).
